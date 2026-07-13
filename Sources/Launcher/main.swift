@@ -7,14 +7,20 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var shortcut = LauncherShortcut(rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? "") ?? .commandSpace
     private var applications: [ApplicationRecord] = []
+    private var aliases: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: "applicationAliases") as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: "applicationAliases") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         windowController.onLaunch = { [weak self] application in self?.open(application) }
+        windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
         configureStatusItem()
         hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.showLauncher() } }
         registerShortcut(shortcut, reportFailure: true)
         registerLoginItem()
+        observeApplicationUse()
         let demoQuery = CommandLine.arguments.first { $0.hasPrefix("--demo-query=") }?.dropFirst("--demo-query=".count).description
         reloadApplications(showWhenReady: CommandLine.arguments.contains("--demo") || demoQuery != nil, demoQuery: demoQuery)
     }
@@ -31,8 +37,8 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             let applications = ApplicationCatalog.load()
             DispatchQueue.main.async {
-                self.applications = applications
-                self.windowController.setApplications(applications)
+                self.applications = applications.map { ApplicationAliases.applying(self.aliases, to: $0) }
+                self.windowController.setApplications(self.applications)
                 if showWhenReady {
                     self.showLauncher()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
@@ -42,11 +48,46 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ application: ApplicationRecord) {
+        markRecentlyUsed(application)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: application.url, configuration: configuration) { _, error in
             if let error { self.presentError("Could not open \(application.name): \(error.localizedDescription)") }
         }
+    }
+
+    private func observeApplicationUse() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let running = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let application = self?.applications.first(where: { $0.bundleIdentifier == running.bundleIdentifier }) else { return }
+            self?.markRecentlyUsed(application)
+        }
+    }
+
+    private func markRecentlyUsed(_ application: ApplicationRecord) {
+        applications = applications.map {
+            guard $0.url == application.url else { return $0 }
+            return ApplicationRecord(name: $0.name, originalName: $0.originalName, url: $0.url, bundleIdentifier: $0.bundleIdentifier, lastUsedAt: Date())
+        }
+        windowController.setApplications(applications)
+    }
+
+    private func rename(_ application: ApplicationRecord, to proposedName: String) {
+        let name = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = ApplicationAliases.key(for: application)
+        var updatedAliases = aliases
+        if name.isEmpty || name == application.originalName {
+            updatedAliases.removeValue(forKey: key)
+        } else {
+            updatedAliases[key] = name
+        }
+        aliases = updatedAliases
+        applications = applications.map { ApplicationAliases.applying(updatedAliases, to: $0) }
+        windowController.setApplications(applications)
     }
 
     private func registerShortcut(_ shortcut: LauncherShortcut, reportFailure: Bool) {

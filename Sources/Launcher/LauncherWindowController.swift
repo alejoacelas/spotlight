@@ -1,8 +1,18 @@
 import AppKit
 
 final class LauncherPanel: NSPanel {
+    var renameAction: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+           event.charactersIgnoringModifiers?.lowercased() == "r" {
+            renameAction?()
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
 }
 
 final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
@@ -14,15 +24,17 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     private var matches: [ApplicationMatch] = []
     private var launchedForQuery: String?
     var onLaunch: ((ApplicationRecord) -> Void)?
+    var onRename: ((ApplicationRecord, String) -> Void)?
 
     init() {
         let panel = LauncherPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 560),
+            contentRect: NSRect(x: 0, y: 0, width: 640, height: 274),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         super.init(window: panel)
+        panel.renameAction = { [weak self] in self?.promptToRenameSelected() }
         configureWindow(panel)
         configureContent()
     }
@@ -66,9 +78,9 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         updateResults()
         let query = searchField.stringValue
         guard launchedForQuery != query,
-              let exact = LauncherModel.uniqueExactMatch(query: query, applications: applications) else { return }
+              let match = LauncherModel.uniqueMatch(query: query, matches: matches) else { return }
         launchedForQuery = query
-        launch(exact)
+        launch(match)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -137,14 +149,15 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         effect.blendingMode = .behindWindow
         effect.state = .active
         effect.wantsLayer = true
-        effect.layer?.cornerRadius = 18
+        effect.layer?.cornerRadius = 14
         effect.layer?.masksToBounds = true
         window.contentView = effect
 
         searchField.translatesAutoresizingMaskIntoConstraints = false
-        searchField.font = .systemFont(ofSize: 26, weight: .regular)
+        searchField.font = .systemFont(ofSize: 18, weight: .regular)
+        searchField.controlSize = .large
         searchField.focusRingType = .none
-        searchField.placeholderString = "Open an application"
+        searchField.placeholderString = "Open an application — ⌘R renames"
         searchField.delegate = self
         searchField.sendsSearchStringImmediately = true
 
@@ -152,8 +165,8 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
         tableView.headerView = nil
-        tableView.rowHeight = 46
-        tableView.intercellSpacing = NSSize(width: 0, height: 2)
+        tableView.rowHeight = 34
+        tableView.intercellSpacing = NSSize(width: 0, height: 1)
         tableView.backgroundColor = .clear
         tableView.selectionHighlightStyle = .regular
         tableView.dataSource = self
@@ -163,11 +176,11 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = tableView
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = false
         scrollView.drawsBackground = false
 
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyLabel.font = .systemFont(ofSize: 15)
+        emptyLabel.font = .systemFont(ofSize: 13)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
         emptyLabel.isHidden = true
@@ -176,14 +189,14 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         effect.addSubview(scrollView)
         effect.addSubview(emptyLabel)
         NSLayoutConstraint.activate([
-            searchField.topAnchor.constraint(equalTo: effect.topAnchor, constant: 18),
-            searchField.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 18),
-            searchField.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -18),
-            searchField.heightAnchor.constraint(equalToConstant: 48),
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 10),
-            scrollView.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 10),
-            scrollView.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -10),
-            scrollView.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -12),
+            searchField.topAnchor.constraint(equalTo: effect.topAnchor, constant: 12),
+            searchField.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 14),
+            searchField.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -14),
+            searchField.heightAnchor.constraint(equalToConstant: 38),
+            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 6),
+            scrollView.leadingAnchor.constraint(equalTo: effect.leadingAnchor, constant: 8),
+            scrollView.trailingAnchor.constraint(equalTo: effect.trailingAnchor, constant: -8),
+            scrollView.bottomAnchor.constraint(equalTo: effect.bottomAnchor, constant: -8),
             emptyLabel.centerXAnchor.constraint(equalTo: effect.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
@@ -196,19 +209,19 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         let label = NSTextField(labelWithString: "")
         icon.translatesAutoresizingMaskIntoConstraints = false
         label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 16, weight: .medium)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
         cell.addSubview(icon)
         cell.addSubview(label)
         cell.imageView = icon
         cell.textField = label
         NSLayoutConstraint.activate([
-            icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 10),
+            icon.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 8),
             icon.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
-            icon.widthAnchor.constraint(equalToConstant: 32),
-            icon.heightAnchor.constraint(equalToConstant: 32),
-            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 12),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+            icon.widthAnchor.constraint(equalToConstant: 24),
+            icon.heightAnchor.constraint(equalToConstant: 24),
+            label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
+            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
         ])
         return cell
@@ -229,7 +242,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
 
     private func resizeWindow(for resultCount: Int) {
         guard let window else { return }
-        let newHeight = min(560, max(104, 84 + CGFloat(resultCount) * 48))
+        let newHeight = min(274, max(88, 64 + CGFloat(resultCount) * 35))
         guard window.frame.height != newHeight else { return }
         var frame = window.frame
         frame.origin.y += frame.height - newHeight
@@ -248,6 +261,25 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     private func launchSelected() {
         guard matches.indices.contains(tableView.selectedRow) else { return }
         launch(matches[tableView.selectedRow].application)
+    }
+
+    private func promptToRenameSelected() {
+        guard matches.indices.contains(tableView.selectedRow), let window else { return }
+        let application = matches[tableView.selectedRow].application
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        input.stringValue = application.name
+
+        let alert = NSAlert()
+        alert.messageText = "Rename \(application.originalName)"
+        alert.informativeText = "This changes its name only in Launcher. Leave it empty to restore the original name."
+        alert.accessoryView = input
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn { onRename?(application, input.stringValue) }
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(searchField)
     }
 
     private func launch(_ application: ApplicationRecord) {

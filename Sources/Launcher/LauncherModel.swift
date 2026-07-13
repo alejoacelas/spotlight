@@ -2,8 +2,36 @@ import Foundation
 
 struct ApplicationRecord: Hashable, Sendable {
     let name: String
+    let originalName: String
     let url: URL
     let bundleIdentifier: String?
+    let lastUsedAt: Date?
+
+    init(name: String, originalName: String? = nil, url: URL, bundleIdentifier: String?, lastUsedAt: Date? = nil) {
+        self.name = name
+        self.originalName = originalName ?? name
+        self.url = url
+        self.bundleIdentifier = bundleIdentifier
+        self.lastUsedAt = lastUsedAt
+    }
+}
+
+enum ApplicationAliases {
+    static func key(for application: ApplicationRecord) -> String {
+        application.bundleIdentifier ?? "path:\(application.url.path)"
+    }
+
+    static func applying(_ aliases: [String: String], to application: ApplicationRecord) -> ApplicationRecord {
+        let alias = aliases[key(for: application)]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let displayName = alias.flatMap { $0.isEmpty ? nil : $0 } ?? application.originalName
+        return ApplicationRecord(
+            name: displayName,
+            originalName: application.originalName,
+            url: application.url,
+            bundleIdentifier: application.bundleIdentifier,
+            lastUsedAt: application.lastUsedAt
+        )
+    }
 }
 
 struct ApplicationMatch: Equatable, Sendable {
@@ -12,27 +40,31 @@ struct ApplicationMatch: Equatable, Sendable {
 }
 
 enum LauncherModel {
-    static let resultLimit = 10
+    static let resultLimit = 6
 
     static func matches(query: String, applications: [ApplicationRecord], limit: Int = resultLimit) -> [ApplicationMatch] {
         let query = normalized(query)
         let scored = applications.compactMap { application -> ApplicationMatch? in
-            guard let score = score(query: query, name: normalized(application.name)) else { return nil }
+            let displayScore = score(query: query, name: normalized(application.name))
+            let originalScore = score(query: query, name: normalized(application.originalName))
+            guard let score = [displayScore, originalScore].compactMap({ $0 }).max() else { return nil }
             return ApplicationMatch(application: application, score: score)
         }
         return scored.sorted {
             if $0.score != $1.score { return $0.score > $1.score }
+            if $0.application.lastUsedAt != $1.application.lastUsedAt {
+                return ($0.application.lastUsedAt ?? .distantPast) > ($1.application.lastUsedAt ?? .distantPast)
+            }
             let nameOrder = $0.application.name.localizedCaseInsensitiveCompare($1.application.name)
             if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
             return $0.application.url.path < $1.application.url.path
         }.prefix(limit).map { $0 }
     }
 
-    static func uniqueExactMatch(query: String, applications: [ApplicationRecord]) -> ApplicationRecord? {
+    static func uniqueMatch(query: String, matches: [ApplicationMatch]) -> ApplicationRecord? {
         let query = normalized(query)
         guard query.count >= 2 else { return nil }
-        let exact = applications.filter { normalized($0.name) == query }
-        return exact.count == 1 ? exact[0] : nil
+        return matches.count == 1 ? matches[0].application : nil
     }
 
     static func normalized(_ value: String) -> String {

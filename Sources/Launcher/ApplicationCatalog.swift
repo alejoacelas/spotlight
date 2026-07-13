@@ -46,6 +46,7 @@ enum ApplicationCatalog {
         let bundleName = bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String
         let filename = url.deletingPathExtension().lastPathComponent
         let name = [displayName, bundleName, filename].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }.first { !$0.isEmpty } ?? filename
-        return ApplicationRecord(name: name, url: url, bundleIdentifier: bundle?.bundleIdentifier)
+        let lastUsedAt = NSMetadataItem(url: url)?.value(forAttribute: NSMetadataItemLastUsedDateKey) as? Date
+        return ApplicationRecord(name: name, url: url, bundleIdentifier: bundle?.bundleIdentifier, lastUsedAt: lastUsedAt)
     }
 }

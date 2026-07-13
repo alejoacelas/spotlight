@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import Launcher
 
-private func app(_ name: String, path: String? = nil) -> ApplicationRecord {
-    ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: nil)
+private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -> ApplicationRecord {
+    ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: nil, lastUsedAt: lastUsedAt)
 }
 
 @Test func ranksExactPrefixLaterAndSubsequenceMatches() {
@@ -21,10 +21,19 @@ private func app(_ name: String, path: String? = nil) -> ApplicationRecord {
     #expect(LauncherModel.matches(query: "cafe", applications: applications).first?.application.name == "Café")
 }
 
-@Test func exactMatchNeedsTwoCharactersAndMustBeUnique() {
-    #expect(LauncherModel.uniqueExactMatch(query: "X", applications: [app("X")]) == nil)
-    #expect(LauncherModel.uniqueExactMatch(query: "Safari", applications: [app("Safari")])?.name == "Safari")
-    #expect(LauncherModel.uniqueExactMatch(query: "Safari", applications: [app("Safari", path: "/Applications/Safari.app"), app("Safari", path: "/Other/Safari.app")]) == nil)
+@Test func autoLaunchNeedsTwoCharactersAndOneResult() {
+    let safari = app("Safari")
+    let oneResult = LauncherModel.matches(query: "saf", applications: [safari, app("Mail")])
+    #expect(LauncherModel.uniqueMatch(query: "s", matches: oneResult) == nil)
+    #expect(LauncherModel.uniqueMatch(query: "saf", matches: oneResult)?.name == "Safari")
+    let twoResults = LauncherModel.matches(query: "cal", applications: [app("Calendar"), app("Calculator")])
+    #expect(LauncherModel.uniqueMatch(query: "cal", matches: twoResults) == nil)
+}
+
+@Test func equalQualityMatchesRankByMostRecentUse() {
+    let old = app("Beta", lastUsedAt: Date(timeIntervalSince1970: 10))
+    let recent = app("Alpha", lastUsedAt: Date(timeIntervalSince1970: 20))
+    #expect(LauncherModel.matches(query: "", applications: [old, recent]).map(\.application.name) == ["Alpha", "Beta"])
 }
 
 @Test func unmatchedQueriesReturnNoResults() {
@@ -34,4 +43,15 @@ private func app(_ name: String, path: String? = nil) -> ApplicationRecord {
 @Test func resultCountIsLimited() {
     let applications = (0..<20).map { app("App \($0)") }
     #expect(LauncherModel.matches(query: "", applications: applications).count == LauncherModel.resultLimit)
+}
+
+@Test func aliasesChangeSearchNameWithoutLosingOriginalName() {
+    let safari = app("Safari")
+    let aliases = [ApplicationAliases.key(for: safari): "Web"]
+    let renamed = ApplicationAliases.applying(aliases, to: safari)
+    #expect(renamed.name == "Web")
+    #expect(renamed.originalName == "Safari")
+    #expect(LauncherModel.matches(query: "web", applications: [renamed]).count == 1)
+    #expect(LauncherModel.matches(query: "safari", applications: [renamed]).count == 1)
+    #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
 }
