@@ -276,10 +276,12 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         alert.addButton(withTitle: "Rename")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn { onRename?(application, input.stringValue) }
-        window.makeKeyAndOrderFront(nil)
-        window.makeFirstResponder(searchField)
+        alert.beginSheetModal(for: window) { [weak self, weak window] response in
+            guard let self else { return }
+            if response == .alertFirstButtonReturn { self.onRename?(application, input.stringValue) }
+            window?.makeKeyAndOrderFront(nil)
+            window?.makeFirstResponder(self.searchField)
+        }
     }
 
     private func launch(_ application: ApplicationRecord) {
