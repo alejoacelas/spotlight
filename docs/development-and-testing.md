@@ -18,4 +18,6 @@ Launcher is a native Swift app. I develop it from the terminal, exercise its rea
 - [macOS integration](macos-integration.md) explains how the hotkey, launcher window, application catalog, recent-use ordering, login item and aliases reach the operating system.
 - [Testing](testing.md) lists the automated and real-application checks, including how keyboard events and screenshots let me verify behavior without guessing from source.
 - [Permissions and restrictions](permissions.md) separates permissions Launcher needs from actions that require the user's confirmation while I work.
+- [Feature ideas](feature-ideas.md) prioritizes further ways to make movement around the computer faster.
+- [Faster future development](development-affordances.md) lists reusable infrastructure and inputs that would shorten future Raycast-style work.
 <!--/ai-->

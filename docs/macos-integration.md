@@ -5,6 +5,8 @@
 
 Carbon's `RegisterEventHotKey` registers Command-Space or Option-Space globally. This API delivers only the configured shortcut and does not require Accessibility permission or a keyboard event tap.
 
+The same registry can hold per-application shortcuts captured from the Command-K actions panel. Carbon rejects conflicts rather than silently replacing a macOS or third-party shortcut.
+
 AppKit supplies the borderless `NSPanel`, search field, result table, icons, keyboard navigation and rename dialog. The panel can become the key window while Launcher remains a menu-bar accessory rather than a Dock application.
 
 ## Applications and recent use
@@ -15,7 +17,7 @@ AppKit supplies the borderless `NSPanel`, search field, result table, icons, key
 
 ## Persistent settings
 
-`UserDefaults` stores the selected shortcut and Launcher-only aliases. Command-R changes the searchable display name but never renames or edits the actual `.app` bundle. Clearing an alias restores the bundle's original name.
+`UserDefaults` stores the selected launcher shortcut, per-app shortcuts and Launcher-only aliases. Command-K exposes both rename and shortcut actions; Command-R remains a direct rename command. Aliases never rename or edit the actual `.app` bundle.
 
 ## Login startup
 
