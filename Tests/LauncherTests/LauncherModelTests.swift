@@ -1,4 +1,5 @@
 import Foundation
+import Carbon
 import Testing
 @testable import Launcher
 
@@ -54,4 +55,11 @@ private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -
     #expect(LauncherModel.matches(query: "web", applications: [renamed]).count == 1)
     #expect(LauncherModel.matches(query: "safari", applications: [renamed]).count == 1)
     #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
+}
+
+@Test func appShortcutsDisplayAndPersist() throws {
+    let shortcut = AppShortcut(keyCode: 0, carbonModifiers: UInt32(optionKey | cmdKey), key: "a")
+    #expect(shortcut.displayName == "⌥⌘A")
+    let data = try JSONEncoder().encode(["app": shortcut])
+    #expect(try JSONDecoder().decode([String: AppShortcut].self, from: data) == ["app": shortcut])
 }

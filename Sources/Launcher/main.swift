@@ -7,6 +7,11 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var shortcut = LauncherShortcut(rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? "") ?? .commandSpace
     private var applications: [ApplicationRecord] = []
+    private var appHotKeys: [String: GlobalHotKey] = [:]
+    private var appShortcuts: [String: AppShortcut] = {
+        guard let data = UserDefaults.standard.data(forKey: "applicationShortcuts") else { return [:] }
+        return (try? JSONDecoder().decode([String: AppShortcut].self, from: data)) ?? [:]
+    }()
     private var aliases: [String: String] {
         get { UserDefaults.standard.dictionary(forKey: "applicationAliases") as? [String: String] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: "applicationAliases") }
@@ -16,8 +21,9 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         windowController.onLaunch = { [weak self] application in self?.open(application) }
         windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
+        windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
         configureStatusItem()
-        hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.showLauncher() } }
+        hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.windowController.toggle() } }
         registerShortcut(shortcut, reportFailure: true)
         registerLoginItem()
         observeApplicationUse()
@@ -39,6 +45,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.async {
                 self.applications = applications.map { ApplicationAliases.applying(self.aliases, to: $0) }
                 self.windowController.setApplications(self.applications)
+                self.registerAppShortcuts()
                 if showWhenReady {
                     self.showLauncher()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
@@ -88,6 +95,62 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         aliases = updatedAliases
         applications = applications.map { ApplicationAliases.applying(updatedAliases, to: $0) }
         windowController.setApplications(applications)
+    }
+
+    private func setShortcut(_ shortcut: AppShortcut?, for application: ApplicationRecord) -> String? {
+        let key = ApplicationAliases.key(for: application)
+        let previous = appShortcuts[key]
+        if previous == shortcut { return nil }
+
+        appHotKeys[key]?.unregister()
+        appHotKeys[key] = nil
+        if let shortcut {
+            let hotKey = GlobalHotKey { [weak self] in
+                DispatchQueue.main.async { self?.open(application) }
+            }
+            guard hotKey.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) else {
+                if let previous { restoreShortcut(previous, for: application) }
+                return "\(shortcut.displayName) is already used by Launcher, macOS, or another application."
+            }
+            appHotKeys[key] = hotKey
+            appShortcuts[key] = shortcut
+        } else {
+            appShortcuts[key] = nil
+        }
+        persistAppShortcuts()
+        windowController.setShortcuts(appShortcuts)
+        return nil
+    }
+
+    private func restoreShortcut(_ shortcut: AppShortcut, for application: ApplicationRecord) {
+        let key = ApplicationAliases.key(for: application)
+        let hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.open(application) } }
+        if hotKey.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) {
+            appHotKeys[key] = hotKey
+        }
+    }
+
+    private func registerAppShortcuts() {
+        appHotKeys.removeAll()
+        var unavailable: [String] = []
+        for application in applications {
+            let key = ApplicationAliases.key(for: application)
+            guard let shortcut = appShortcuts[key] else { continue }
+            let hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.open(application) } }
+            if hotKey.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) {
+                appHotKeys[key] = hotKey
+            } else {
+                unavailable.append("\(shortcut.displayName) for \(application.name)")
+            }
+        }
+        windowController.setShortcuts(appShortcuts)
+        if !unavailable.isEmpty { presentError("These shortcuts could not be registered: \(unavailable.joined(separator: ", ")).") }
+    }
+
+    private func persistAppShortcuts() {
+        if let data = try? JSONEncoder().encode(appShortcuts) {
+            UserDefaults.standard.set(data, forKey: "applicationShortcuts")
+        }
     }
 
     private func registerShortcut(_ shortcut: LauncherShortcut, reportFailure: Bool) {

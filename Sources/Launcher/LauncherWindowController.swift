@@ -2,17 +2,24 @@ import AppKit
 
 final class LauncherPanel: NSPanel {
     var renameAction: (() -> Void)?
+    var actionsAction: (() -> Void)?
+    var openIndexAction: ((Int) -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-           event.charactersIgnoringModifiers?.lowercased() == "r" {
-            renameAction?()
-            return true
+           let key = event.charactersIgnoringModifiers?.lowercased() {
+            if key == "r" { renameAction?(); return true }
+            if key == "k" { actionsAction?(); return true }
+            if let number = Int(key), (1...6).contains(number) { openIndexAction?(number - 1); return true }
         }
         return super.performKeyEquivalent(with: event)
     }
+}
+
+final class ApplicationCellView: NSTableCellView {
+    let commandLabel = NSTextField(labelWithString: "")
 }
 
 final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
@@ -22,9 +29,11 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     private let emptyLabel = NSTextField(labelWithString: "No matching applications")
     private var applications: [ApplicationRecord] = []
     private var matches: [ApplicationMatch] = []
+    private var shortcuts: [String: AppShortcut] = [:]
     private var launchedForQuery: String?
     var onLaunch: ((ApplicationRecord) -> Void)?
     var onRename: ((ApplicationRecord, String) -> Void)?
+    var onSetShortcut: ((ApplicationRecord, AppShortcut?) -> String?)?
 
     init() {
         let panel = LauncherPanel(
@@ -35,6 +44,8 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         )
         super.init(window: panel)
         panel.renameAction = { [weak self] in self?.promptToRenameSelected() }
+        panel.actionsAction = { [weak self] in self?.promptForActionsSelected() }
+        panel.openIndexAction = { [weak self] index in self?.launch(at: index) }
         configureWindow(panel)
         configureContent()
     }
@@ -44,6 +55,15 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     func setApplications(_ applications: [ApplicationRecord]) {
         self.applications = applications
         updateResults()
+    }
+
+    func setShortcuts(_ shortcuts: [String: AppShortcut]) {
+        self.shortcuts = shortcuts
+        tableView.reloadData()
+    }
+
+    func toggle() {
+        window?.isVisible == true ? hide() : show()
     }
 
     func show() {
@@ -61,6 +81,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     }
 
     func hide() {
+        if let sheet = window?.attachedSheet { window?.endSheet(sheet, returnCode: .abort) }
         window?.orderOut(nil)
         searchField.stringValue = ""
     }
@@ -103,11 +124,17 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let identifier = NSUserInterfaceItemIdentifier("ApplicationCell")
-        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? NSTableCellView) ?? makeCell(identifier: identifier)
+        let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? ApplicationCellView) ?? makeCell(identifier: identifier)
         let match = matches[row]
         cell.textField?.stringValue = match.application.name
         cell.imageView?.image = NSWorkspace.shared.icon(forFile: match.application.url.path)
         cell.imageView?.imageScaling = .scaleProportionallyUpOrDown
+        let rowCommand = "⌘\(row + 1)"
+        if let shortcut = shortcuts[ApplicationAliases.key(for: match.application)] {
+            cell.commandLabel.stringValue = "\(shortcut.displayName)   \(rowCommand)"
+        } else {
+            cell.commandLabel.stringValue = rowCommand
+        }
         cell.toolTip = match.application.url.path
         return cell
     }
@@ -157,7 +184,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         searchField.font = .systemFont(ofSize: 18, weight: .regular)
         searchField.controlSize = .large
         searchField.focusRingType = .none
-        searchField.placeholderString = "Open an application — ⌘R renames"
+        searchField.placeholderString = "Open an application — ⌘K actions"
         searchField.delegate = self
         searchField.sendsSearchStringImmediately = true
 
@@ -202,8 +229,8 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         ])
     }
 
-    private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> NSTableCellView {
-        let cell = NSTableCellView()
+    private func makeCell(identifier: NSUserInterfaceItemIdentifier) -> ApplicationCellView {
+        let cell = ApplicationCellView()
         cell.identifier = identifier
         let icon = NSImageView()
         let label = NSTextField(labelWithString: "")
@@ -211,8 +238,13 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         label.translatesAutoresizingMaskIntoConstraints = false
         label.font = .systemFont(ofSize: 13, weight: .medium)
         label.lineBreakMode = .byTruncatingMiddle
+        cell.commandLabel.translatesAutoresizingMaskIntoConstraints = false
+        cell.commandLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        cell.commandLabel.textColor = .secondaryLabelColor
+        cell.commandLabel.alignment = .right
         cell.addSubview(icon)
         cell.addSubview(label)
+        cell.addSubview(cell.commandLabel)
         cell.imageView = icon
         cell.textField = label
         NSLayoutConstraint.activate([
@@ -221,8 +253,11 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
             icon.widthAnchor.constraint(equalToConstant: 24),
             icon.heightAnchor.constraint(equalToConstant: 24),
             label.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -8),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: cell.commandLabel.leadingAnchor, constant: -12),
             label.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            cell.commandLabel.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
+            cell.commandLabel.centerYAnchor.constraint(equalTo: cell.centerYAnchor),
+            cell.commandLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 30),
         ])
         return cell
     }
@@ -263,9 +298,41 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         launch(matches[tableView.selectedRow].application)
     }
 
+    private func launch(at index: Int) {
+        guard matches.indices.contains(index) else { return }
+        launch(matches[index].application)
+    }
+
+    private func selectedApplication() -> ApplicationRecord? {
+        guard matches.indices.contains(tableView.selectedRow) else { return nil }
+        return matches[tableView.selectedRow].application
+    }
+
+    private func promptForActionsSelected() {
+        guard let application = selectedApplication(), let window else { return }
+        let alert = NSAlert()
+        alert.messageText = application.name
+        alert.informativeText = "Choose an action for this application."
+        alert.addButton(withTitle: "Rename…")
+        alert.addButton(withTitle: "Assign Shortcut…")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                if response == .alertFirstButtonReturn { self.promptToRename(application) }
+                if response == .alertSecondButtonReturn { self.promptToSetShortcut(application) }
+            }
+        }
+    }
+
     private func promptToRenameSelected() {
-        guard matches.indices.contains(tableView.selectedRow), let window else { return }
-        let application = matches[tableView.selectedRow].application
+        guard let application = selectedApplication() else { return }
+        promptToRename(application)
+    }
+
+    private func promptToRename(_ application: ApplicationRecord) {
+        guard let window else { return }
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
         input.stringValue = application.name
 
@@ -282,6 +349,42 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
             window?.makeKeyAndOrderFront(nil)
             window?.makeFirstResponder(self.searchField)
         }
+    }
+
+    private func promptToSetShortcut(_ application: ApplicationRecord) {
+        guard let window else { return }
+        let key = ApplicationAliases.key(for: application)
+        let recorder = ShortcutRecorderView(shortcut: shortcuts[key])
+        let alert = NSAlert()
+        alert.messageText = "Shortcut for \(application.name)"
+        alert.informativeText = "Press a shortcut with Control, Option, or Command. It will open the app from anywhere."
+        alert.accessoryView = recorder
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+        alert.buttons[0].isEnabled = recorder.shortcut != nil
+        alert.buttons[1].isEnabled = shortcuts[key] != nil
+        recorder.onChange = { shortcut in alert.buttons[0].isEnabled = shortcut != nil }
+        alert.beginSheetModal(for: window) { [weak self, weak window] response in
+            guard let self else { return }
+            let shortcut: AppShortcut?
+            if response == .alertFirstButtonReturn { shortcut = recorder.shortcut }
+            else if response == .alertSecondButtonReturn { shortcut = nil }
+            else { return }
+            if let error = self.onSetShortcut?(application, shortcut) {
+                DispatchQueue.main.async { self.showError(error, on: window) }
+            }
+        }
+        DispatchQueue.main.async { alert.window.makeFirstResponder(recorder) }
+    }
+
+    private func showError(_ message: String, on window: NSWindow?) {
+        guard let window, window.isVisible else { return }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Shortcut unavailable"
+        alert.informativeText = message
+        alert.beginSheetModal(for: window)
     }
 
     private func launch(_ application: ApplicationRecord) {
