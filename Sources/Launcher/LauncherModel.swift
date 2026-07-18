@@ -45,9 +45,7 @@ enum LauncherModel {
     static func matches(query: String, applications: [ApplicationRecord], limit: Int = resultLimit) -> [ApplicationMatch] {
         let query = normalized(query)
         let scored = applications.compactMap { application -> ApplicationMatch? in
-            let displayScore = score(query: query, name: normalized(application.name))
-            let originalScore = score(query: query, name: normalized(application.originalName))
-            guard let score = [displayScore, originalScore].compactMap({ $0 }).max() else { return nil }
+            guard let score = score(query: query, name: normalized(application.name)) else { return nil }
             return ApplicationMatch(application: application, score: score)
         }
         return scored.sorted {
@@ -64,7 +62,16 @@ enum LauncherModel {
     static func uniqueMatch(query: String, matches: [ApplicationMatch]) -> ApplicationRecord? {
         let query = normalized(query)
         guard query.count >= 2 else { return nil }
-        return matches.count == 1 ? matches[0].application : nil
+        if matches.count == 1 { return matches[0].application }
+
+        // After three characters, an exact prefix is decisive unless another result
+        // also begins with the query. Weaker substring, subsequence, and typo matches
+        // remain visible without making common app names slower to open.
+        guard query.count >= 3,
+              let first = matches.first,
+              first.score >= 8_700,
+              matches.dropFirst().first?.score ?? 0 < 8_700 else { return nil }
+        return first.application
     }
 
     static func normalized(_ value: String) -> String {
@@ -93,10 +100,11 @@ enum LauncherModel {
             return 7_900 - (initials.count - query.count)
         }
 
-        if let gaps = subsequenceGaps(query: query, in: name) {
+        if query.count >= 4, let gaps = subsequenceGaps(query: query, in: name) {
             return 7_200 - gaps * 16 - (name.count - query.count)
         }
 
+        guard query.count >= 4 else { return nil }
         let typoAllowance = max(1, min(3, query.count / 4))
         let typoTargets = [name] + words + words.indices.map { words[$0...].joined(separator: " ") }
         let distances = typoTargets.map { target in

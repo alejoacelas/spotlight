@@ -22,13 +22,24 @@ private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -
     #expect(LauncherModel.matches(query: "cafe", applications: applications).first?.application.name == "Café")
 }
 
-@Test func autoLaunchNeedsTwoCharactersAndOneResult() {
+@Test func autoLaunchUsesAUniqueResultOrDecisiveThreeCharacterPrefix() {
     let safari = app("Safari")
     let oneResult = LauncherModel.matches(query: "saf", applications: [safari, app("Mail")])
     #expect(LauncherModel.uniqueMatch(query: "s", matches: oneResult) == nil)
     #expect(LauncherModel.uniqueMatch(query: "saf", matches: oneResult)?.name == "Safari")
     let twoResults = LauncherModel.matches(query: "cal", applications: [app("Calendar"), app("Calculator")])
     #expect(LauncherModel.uniqueMatch(query: "cal", matches: twoResults) == nil)
+
+    let claude = app("Claude")
+    let weakerMatches = LauncherModel.matches(query: "clau", applications: [claude, app("Calendar Utility")])
+    #expect(weakerMatches.count > 1)
+    #expect(LauncherModel.uniqueMatch(query: "clau", matches: weakerMatches) == claude)
+}
+
+@Test func typoMatchingStartsAtFourCharacters() {
+    let applications = [app("Claude")]
+    #expect(LauncherModel.matches(query: "clu", applications: applications).isEmpty)
+    #expect(LauncherModel.matches(query: "cluude", applications: applications).first?.application.name == "Claude")
 }
 
 @Test func equalQualityMatchesRankByMostRecentUse() {
@@ -46,14 +57,14 @@ private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -
     #expect(LauncherModel.matches(query: "", applications: applications).count == LauncherModel.resultLimit)
 }
 
-@Test func aliasesChangeSearchNameWithoutLosingOriginalName() {
+@Test func aliasesReplaceTheSearchNameWithoutLosingTheRestorableOriginalName() {
     let safari = app("Safari")
     let aliases = [ApplicationAliases.key(for: safari): "Web"]
     let renamed = ApplicationAliases.applying(aliases, to: safari)
     #expect(renamed.name == "Web")
     #expect(renamed.originalName == "Safari")
     #expect(LauncherModel.matches(query: "web", applications: [renamed]).count == 1)
-    #expect(LauncherModel.matches(query: "safari", applications: [renamed]).count == 1)
+    #expect(LauncherModel.matches(query: "safari", applications: [renamed]).isEmpty)
     #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
 }
 

@@ -43,7 +43,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
             defer: false
         )
         super.init(window: panel)
-        panel.renameAction = { [weak self] in self?.promptToRenameSelected() }
+        panel.renameAction = { [weak self] in self?.promptForActionsSelected() }
         panel.actionsAction = { [weak self] in self?.promptForActionsSelected() }
         panel.openIndexAction = { [weak self] index in self?.launch(at: index) }
         configureWindow(panel)
@@ -324,11 +324,6 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
                 if response == .alertSecondButtonReturn { self.promptToSetShortcut(application) }
             }
         }
-    }
-
-    private func promptToRenameSelected() {
-        guard let application = selectedApplication() else { return }
-        promptToRename(application)
     }
 
     private func promptToRename(_ application: ApplicationRecord) {
