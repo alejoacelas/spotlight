@@ -5,13 +5,15 @@ struct ApplicationRecord: Hashable, Sendable {
     let originalName: String
     let url: URL
     let bundleIdentifier: String?
+    let bundleVersion: String?
     let lastUsedAt: Date?
 
-    init(name: String, originalName: String? = nil, url: URL, bundleIdentifier: String?, lastUsedAt: Date? = nil) {
+    init(name: String, originalName: String? = nil, url: URL, bundleIdentifier: String?, bundleVersion: String? = nil, lastUsedAt: Date? = nil) {
         self.name = name
         self.originalName = originalName ?? name
         self.url = url
         self.bundleIdentifier = bundleIdentifier
+        self.bundleVersion = bundleVersion
         self.lastUsedAt = lastUsedAt
     }
 }
@@ -29,8 +31,15 @@ enum ApplicationAliases {
             originalName: application.originalName,
             url: application.url,
             bundleIdentifier: application.bundleIdentifier,
+            bundleVersion: application.bundleVersion,
             lastUsedAt: application.lastUsedAt
         )
+    }
+}
+
+enum ApplicationExclusions {
+    static func applying(_ excludedKeys: Set<String>, to applications: [ApplicationRecord]) -> [ApplicationRecord] {
+        applications.filter { !excludedKeys.contains(ApplicationAliases.key(for: $0)) }
     }
 }
 

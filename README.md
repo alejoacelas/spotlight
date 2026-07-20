@@ -9,7 +9,7 @@ My small, typo-tolerant macOS application launcher. Results rerank by match qual
 
 Launcher defaults to Command-Space. Use its menu-bar icon to switch between Command-Space and Option-Space or refresh the application list. It registers itself to start at login; macOS may show a one-time notification when it does.
 
-Use Command-1 through Command-6 to open a visible result. Select an application and press Command-R or Command-K to rename it or assign a persistent global shortcut. A renamed app is searchable only by its new name. Names and shortcuts persist across restarts.
+Use Command-1 through Command-6 to open a visible result. Select an application and press Command-R or Command-K to rename it, assign a persistent global shortcut or remove it from Launcher without uninstalling it. Restore removed applications from the menu-bar icon. Names, shortcuts and removals persist across restarts.
 
 [How Launcher is built and tested](docs/development-and-testing.md) links to the development workflow, macOS interfaces, test methods and permission boundaries.
 

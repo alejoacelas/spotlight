@@ -12,6 +12,7 @@
 - the six-result limit;
 - persistent aliases, restoration and search by both alias and original name;
 - per-app shortcut display and persistence encoding;
+- application exclusion from results;
 - queries with no matches.
 
 These tests use synthetic application records, so they run quickly and do not launch programs.

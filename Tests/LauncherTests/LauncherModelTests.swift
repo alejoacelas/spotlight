@@ -3,8 +3,8 @@ import Carbon
 import Testing
 @testable import Launcher
 
-private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -> ApplicationRecord {
-    ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: nil, lastUsedAt: lastUsedAt)
+private func app(_ name: String, path: String? = nil, bundleIdentifier: String? = nil, bundleVersion: String? = nil, lastUsedAt: Date? = nil) -> ApplicationRecord {
+    ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: bundleIdentifier, bundleVersion: bundleVersion, lastUsedAt: lastUsedAt)
 }
 
 @Test func ranksExactPrefixLaterAndSubsequenceMatches() {
@@ -66,6 +66,21 @@ private func app(_ name: String, path: String? = nil, lastUsedAt: Date? = nil) -
     #expect(LauncherModel.matches(query: "web", applications: [renamed]).count == 1)
     #expect(LauncherModel.matches(query: "safari", applications: [renamed]).isEmpty)
     #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
+}
+
+@Test func excludedApplicationsDoNotReachLauncherResults() {
+    let safari = app("Safari")
+    let mail = app("Mail")
+    let visible = ApplicationExclusions.applying([ApplicationAliases.key(for: safari)], to: [safari, mail])
+    #expect(visible == [mail])
+    #expect(LauncherModel.matches(query: "safari", applications: visible).isEmpty)
+}
+
+@Test func duplicateBundleIdentifiersKeepOnlyTheNewestInstalledVersion() {
+    let old = app("ChatGPT", path: "/Applications/ChatGPT.app", bundleIdentifier: "com.openai.codex", bundleVersion: "5440")
+    let new = app("ChatGPT", path: "/Applications/Codex.app", bundleIdentifier: "com.openai.codex", bundleVersion: "5551")
+    #expect(ApplicationCatalog.deduplicated([old, new]) == [new])
+    #expect(ApplicationCatalog.deduplicated([new, old]) == [new])
 }
 
 @Test func appShortcutsDisplayAndPersist() throws {

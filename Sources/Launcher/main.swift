@@ -16,12 +16,17 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         get { UserDefaults.standard.dictionary(forKey: "applicationAliases") as? [String: String] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: "applicationAliases") }
     }
+    private var excludedApplicationKeys: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "excludedApplications") ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: "excludedApplications") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         windowController.onLaunch = { [weak self] application in self?.open(application) }
         windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
         windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
+        windowController.onRemove = { [weak self] application in self?.removeFromLauncher(application) }
         configureStatusItem()
         hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.windowController.toggle() } }
         registerShortcut(shortcut, reportFailure: true)
@@ -43,7 +48,8 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             let applications = ApplicationCatalog.load()
             DispatchQueue.main.async {
-                self.applications = applications.map { ApplicationAliases.applying(self.aliases, to: $0) }
+                self.applications = ApplicationExclusions.applying(self.excludedApplicationKeys, to: applications)
+                    .map { ApplicationAliases.applying(self.aliases, to: $0) }
                 self.windowController.setApplications(self.applications)
                 self.registerAppShortcuts()
                 if showWhenReady {
@@ -78,7 +84,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private func markRecentlyUsed(_ application: ApplicationRecord) {
         applications = applications.map {
             guard $0.url == application.url else { return $0 }
-            return ApplicationRecord(name: $0.name, originalName: $0.originalName, url: $0.url, bundleIdentifier: $0.bundleIdentifier, lastUsedAt: Date())
+            return ApplicationRecord(name: $0.name, originalName: $0.originalName, url: $0.url, bundleIdentifier: $0.bundleIdentifier, bundleVersion: $0.bundleVersion, lastUsedAt: Date())
         }
         windowController.setApplications(applications)
     }
@@ -95,6 +101,18 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         aliases = updatedAliases
         applications = applications.map { ApplicationAliases.applying(updatedAliases, to: $0) }
         windowController.setApplications(applications)
+    }
+
+    private func removeFromLauncher(_ application: ApplicationRecord) {
+        let key = ApplicationAliases.key(for: application)
+        var excluded = excludedApplicationKeys
+        excluded.insert(key)
+        excludedApplicationKeys = excluded
+        appHotKeys[key]?.unregister()
+        appHotKeys[key] = nil
+        applications.removeAll { ApplicationAliases.key(for: $0) == key }
+        windowController.setApplications(applications)
+        configureStatusMenu()
     }
 
     private func setShortcut(_ shortcut: AppShortcut?, for application: ApplicationRecord) -> String? {
@@ -194,6 +212,9 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         let refresh = menu.addItem(withTitle: "Refresh Applications", action: #selector(refreshFromMenu), keyEquivalent: "")
         refresh.target = self
+        let restore = menu.addItem(withTitle: "Restore Removed Applications", action: #selector(restoreRemovedApplications), keyEquivalent: "")
+        restore.target = self
+        restore.isEnabled = !excludedApplicationKeys.isEmpty
         let login = menu.addItem(withTitle: "Start at Login", action: nil, keyEquivalent: "")
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.isEnabled = false
@@ -205,6 +226,11 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openFromMenu() { showLauncher() }
     @objc private func refreshFromMenu() { reloadApplications() }
+    @objc private func restoreRemovedApplications() {
+        excludedApplicationKeys = []
+        configureStatusMenu()
+        reloadApplications()
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func changeShortcut(_ sender: NSMenuItem) {

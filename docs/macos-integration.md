@@ -11,13 +11,13 @@ AppKit supplies the borderless `NSPanel`, search field, result table, icons, key
 
 ## Applications and recent use
 
-`FileManager` enumerates `.app` bundles in the user, local and system Applications directories. `Bundle` reads each display name and bundle identifier; `NSWorkspace` supplies icons and opens the selected bundle.
+`FileManager` enumerates `.app` bundles in the user, local and system Applications directories. `Bundle` reads each display name, bundle identifier and version; duplicate bundle identifiers collapse to the newest installed version. `NSWorkspace` supplies icons and opens the selected bundle.
 
 `NSMetadataItemLastUsedDateKey` reads Spotlight's last-used date. `NSWorkspace.didActivateApplicationNotification` updates that order while Launcher remains running. Match quality stays primary; recency breaks equal scores and orders the unfiltered list.
 
 ## Persistent settings
 
-`UserDefaults` stores the selected launcher shortcut, per-app shortcuts and Launcher-only aliases. Command-K exposes both rename and shortcut actions; Command-R remains a direct rename command. Aliases never rename or edit the actual `.app` bundle.
+`UserDefaults` stores the selected launcher shortcut, per-app shortcuts, Launcher-only aliases and excluded applications. Command-K and Command-R expose rename, shortcut and removal actions. Removal filters the application from results and unregisters its shortcut without changing the `.app` bundle; the menu-bar menu can restore excluded applications.
 
 ## Login startup
 

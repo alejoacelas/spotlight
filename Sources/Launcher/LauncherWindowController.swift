@@ -34,6 +34,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     var onLaunch: ((ApplicationRecord) -> Void)?
     var onRename: ((ApplicationRecord, String) -> Void)?
     var onSetShortcut: ((ApplicationRecord, AppShortcut?) -> String?)?
+    var onRemove: ((ApplicationRecord) -> Void)?
 
     init() {
         let panel = LauncherPanel(
@@ -315,6 +316,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         alert.informativeText = "Choose an action for this application."
         alert.addButton(withTitle: "Rename…")
         alert.addButton(withTitle: "Assign Shortcut…")
+        alert.addButton(withTitle: "Remove from Launcher")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         alert.beginSheetModal(for: window) { [weak self] response in
@@ -322,6 +324,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
             DispatchQueue.main.async {
                 if response == .alertFirstButtonReturn { self.promptToRename(application) }
                 if response == .alertSecondButtonReturn { self.promptToSetShortcut(application) }
+                if response == .alertThirdButtonReturn { self.onRemove?(application) }
             }
         }
     }
