@@ -1,6 +1,6 @@
 import Carbon
 
-enum LauncherShortcut: String, CaseIterable {
+enum SpotlightShortcut: String, CaseIterable {
     case commandSpace
     case optionSpace
 
@@ -54,7 +54,7 @@ final class GlobalHotKey {
     }
 
     @discardableResult
-    func register(_ shortcut: LauncherShortcut) -> Bool {
+    func register(_ shortcut: SpotlightShortcut) -> Bool {
         register(keyCode: UInt32(kVK_Space), carbonModifiers: shortcut.carbonModifiers)
     }
 

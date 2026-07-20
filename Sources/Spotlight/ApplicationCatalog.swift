@@ -1,7 +1,7 @@
 import AppKit
 
 enum ApplicationCatalog {
-    private static let ownBundleIdentifier = "com.alejoacelas.launcher"
+    private static let ownBundleIdentifier = "com.alejoacelas.spotlight"
 
     static func load() -> [ApplicationRecord] {
         let fileManager = FileManager.default

@@ -1,11 +1,11 @@
 @preconcurrency import AppKit
 @preconcurrency import ServiceManagement
 
-final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
-    private let windowController = LauncherWindowController()
+final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
+    private let windowController = SpotlightWindowController()
     private var hotKey: GlobalHotKey!
     private var statusItem: NSStatusItem!
-    private var shortcut = LauncherShortcut(rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? "") ?? .commandSpace
+    private var shortcut = SpotlightShortcut(rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? "") ?? .commandSpace
     private var applications: [ApplicationRecord] = []
     private var appHotKeys: [String: GlobalHotKey] = [:]
     private var appShortcuts: [String: AppShortcut] = {
@@ -26,7 +26,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         windowController.onLaunch = { [weak self] application in self?.open(application) }
         windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
         windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
-        windowController.onRemove = { [weak self] application in self?.removeFromLauncher(application) }
+        windowController.onRemove = { [weak self] application in self?.removeFromSpotlight(application) }
         configureStatusItem()
         hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.windowController.toggle() } }
         registerShortcut(shortcut, reportFailure: true)
@@ -40,7 +40,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         if windowController.window?.isVisible == true { windowController.hide() }
     }
 
-    private func showLauncher() {
+    private func showSpotlight() {
         windowController.show()
     }
 
@@ -53,7 +53,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
                 self.windowController.setApplications(self.applications)
                 self.registerAppShortcuts()
                 if showWhenReady {
-                    self.showLauncher()
+                    self.showSpotlight()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
                 }
             }
@@ -103,7 +103,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         windowController.setApplications(applications)
     }
 
-    private func removeFromLauncher(_ application: ApplicationRecord) {
+    private func removeFromSpotlight(_ application: ApplicationRecord) {
         let key = ApplicationAliases.key(for: application)
         var excluded = excludedApplicationKeys
         excluded.insert(key)
@@ -128,7 +128,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
             }
             guard hotKey.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) else {
                 if let previous { restoreShortcut(previous, for: application) }
-                return "\(shortcut.displayName) is already used by Launcher, macOS, or another application."
+                return "\(shortcut.displayName) is already used by Spotlight, macOS, or another application."
             }
             appHotKeys[key] = hotKey
             appShortcuts[key] = shortcut
@@ -171,11 +171,11 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func registerShortcut(_ shortcut: LauncherShortcut, reportFailure: Bool) {
+    private func registerShortcut(_ shortcut: SpotlightShortcut, reportFailure: Bool) {
         let previous = self.shortcut
         guard hotKey.register(shortcut) else {
             _ = hotKey.register(previous)
-            if reportFailure { presentError("\(shortcut.title) is already in use. Choose the other shortcut from the Launcher menu.") }
+            if reportFailure { presentError("\(shortcut.title) is already in use. Choose the other shortcut from the Spotlight menu.") }
             return
         }
         self.shortcut = shortcut
@@ -187,23 +187,23 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         do {
             if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
         } catch {
-            presentError("Launcher could not start at login: \(error.localizedDescription)")
+            presentError("Spotlight could not start at login: \(error.localizedDescription)")
         }
     }
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Launcher")
+        statusItem.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Spotlight")
         configureStatusMenu()
     }
 
     private func configureStatusMenu() {
         guard statusItem != nil else { return }
         let menu = NSMenu()
-        let openItem = menu.addItem(withTitle: "Open Launcher", action: #selector(openFromMenu), keyEquivalent: "")
+        let openItem = menu.addItem(withTitle: "Open Spotlight", action: #selector(openFromMenu), keyEquivalent: "")
         openItem.target = self
         menu.addItem(.separator())
-        for choice in LauncherShortcut.allCases {
+        for choice in SpotlightShortcut.allCases {
             let item = menu.addItem(withTitle: choice.title, action: #selector(changeShortcut(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = choice.rawValue
@@ -219,12 +219,12 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.isEnabled = false
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit Launcher", action: #selector(quit), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: "Quit Spotlight", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         statusItem.menu = menu
     }
 
-    @objc private func openFromMenu() { showLauncher() }
+    @objc private func openFromMenu() { showSpotlight() }
     @objc private func refreshFromMenu() { reloadApplications() }
     @objc private func restoreRemovedApplications() {
         excludedApplicationKeys = []
@@ -234,7 +234,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func changeShortcut(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String, let shortcut = LauncherShortcut(rawValue: rawValue) else { return }
+        guard let rawValue = sender.representedObject as? String, let shortcut = SpotlightShortcut(rawValue: rawValue) else { return }
         registerShortcut(shortcut, reportFailure: true)
     }
 
@@ -242,7 +242,7 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "Launcher"
+            alert.messageText = "Spotlight"
             alert.informativeText = message
             alert.runModal()
         }
@@ -250,6 +250,6 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let application = NSApplication.shared
-let delegate = LauncherAppDelegate()
+let delegate = SpotlightAppDelegate()
 application.delegate = delegate
 application.run()

@@ -2,12 +2,12 @@
 import PackageDescription
 
 let package = Package(
-    name: "Launcher",
+    name: "Spotlight",
     platforms: [.macOS(.v14)],
-    products: [.executable(name: "Launcher", targets: ["Launcher"])],
+    products: [.executable(name: "Spotlight", targets: ["Spotlight"])],
     targets: [
-        .executableTarget(name: "Launcher"),
-        .testTarget(name: "LauncherTests", dependencies: ["Launcher"]),
+        .executableTarget(name: "Spotlight"),
+        .testTarget(name: "SpotlightTests", dependencies: ["Spotlight"]),
     ],
     swiftLanguageModes: [.v5]
 )

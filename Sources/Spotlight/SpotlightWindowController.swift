@@ -1,6 +1,6 @@
 import AppKit
 
-final class LauncherPanel: NSPanel {
+final class SpotlightPanel: NSPanel {
     var renameAction: (() -> Void)?
     var actionsAction: (() -> Void)?
     var openIndexAction: ((Int) -> Void)?
@@ -22,7 +22,7 @@ final class ApplicationCellView: NSTableCellView {
     let commandLabel = NSTextField(labelWithString: "")
 }
 
-final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let searchField = NSSearchField()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
@@ -37,7 +37,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     var onRemove: ((ApplicationRecord) -> Void)?
 
     init() {
-        let panel = LauncherPanel(
+        let panel = SpotlightPanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 274),
             styleMask: [.borderless, .fullSizeContentView],
             backing: .buffered,
@@ -100,7 +100,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         updateResults()
         let query = searchField.stringValue
         guard launchedForQuery != query,
-              let match = LauncherModel.uniqueMatch(query: query, matches: matches) else { return }
+              let match = SpotlightModel.uniqueMatch(query: query, matches: matches) else { return }
         launchedForQuery = query
         launch(match)
     }
@@ -264,7 +264,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
     }
 
     private func updateResults() {
-        matches = LauncherModel.matches(query: searchField.stringValue, applications: applications)
+        matches = SpotlightModel.matches(query: searchField.stringValue, applications: applications)
         resizeWindow(for: matches.count)
         tableView.reloadData()
         emptyLabel.isHidden = !matches.isEmpty
@@ -316,7 +316,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
         alert.informativeText = "Choose an action for this application."
         alert.addButton(withTitle: "Rename…")
         alert.addButton(withTitle: "Assign Shortcut…")
-        alert.addButton(withTitle: "Remove from Launcher")
+        alert.addButton(withTitle: "Remove from Spotlight")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         alert.beginSheetModal(for: window) { [weak self] response in
@@ -336,7 +336,7 @@ final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate,
 
         let alert = NSAlert()
         alert.messageText = "Rename \(application.originalName)"
-        alert.informativeText = "This changes its name only in Launcher. Leave it empty to restore the original name."
+        alert.informativeText = "This changes its name only in Spotlight. Leave it empty to restore the original name."
         alert.accessoryView = input
         alert.addButton(withTitle: "Rename")
         alert.addButton(withTitle: "Cancel")

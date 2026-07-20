@@ -48,7 +48,7 @@ struct ApplicationMatch: Equatable, Sendable {
     let score: Int
 }
 
-enum LauncherModel {
+enum SpotlightModel {
     static let resultLimit = 6
 
     static func matches(query: String, applications: [ApplicationRecord], limit: Int = resultLimit) -> [ApplicationMatch] {

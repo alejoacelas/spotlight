@@ -22,7 +22,7 @@ This is roughly 5–10 focused development days before it saves time. It becomes
 
 - Add an XCUITest target for focus, typing, sheets and keyboard navigation once the UI changes more than monthly.
 - Keep the current synthetic catalog and add fixtures for windows, files, duplicate names and shortcut conflicts.
-- Build a signed test driver that posts keys, waits for named UI states and captures only the launcher window.
+- Build a signed test driver that posts keys, waits for named UI states and captures only the spotlight window.
 - Add diagnostic launch flags that inject a fixed catalog, fixed recency dates and shortcut conflicts.
 - Record structured local events for query, ranking reason, selection and latency; exclude typed text by default.
 - Run model tests and warnings-as-errors builds on a GitHub macOS runner.
@@ -48,5 +48,5 @@ A 30-second screen recording of the desired interaction is more useful than a lo
 - Keep two harmless test applications and several synthetic `.app` bundles for launch, rename and duplicate-name checks.
 - If UI automation becomes central, grant its signed test driver Accessibility once rather than granting changing command-line binaries repeatedly.
 
-The production app should continue using the least privileged API available. Development convenience is not a reason to add Accessibility to Launcher when Carbon, AppKit or `NSWorkspace` can provide the feature directly.
+The production app should continue using the least privileged API available. Development convenience is not a reason to add Accessibility to Spotlight when Carbon, AppKit or `NSWorkspace` can provide the feature directly.
 <!--/ai-->

@@ -10,14 +10,14 @@
 
 ## Signing and installation
 
-The build script checks Keychain with `security find-identity`, requires `Switcher Local Code Signing`, signs with `codesign --options runtime`, and verifies the finished bundle with `codesign --verify --deep --strict`. It never silently falls back to an ad-hoc signature.
+The build script checks Keychain for the stable local signing identity, signs with `codesign --options runtime`, and verifies the finished bundle with `codesign --verify --deep --strict`. It never silently falls back to an ad-hoc signature.
 
-`./scripts/build-app.sh --install` replaces the development copy at `~/Applications/Launcher.app` and opens it. Keeping the certificate, bundle identifier and installation location stable gives macOS one persistent identity across rebuilds.
+`./scripts/build-app.sh --install` replaces the development copy at `~/Applications/Spotlight.app` and opens it. Keeping the certificate, bundle identifier and installation location stable gives macOS one persistent identity across rebuilds.
 
 ## Inspection and publishing
 
 - `rg` finds source and configuration references quickly.
 - `git diff --check`, scoped staging and `git status` catch whitespace mistakes and prevent unrelated workspace changes from entering a commit.
 - `gh` and the connected GitHub app push the branch and create the review pull request.
-- The parent workspace generator records Launcher as its own public nested repository without absorbing its source into the parent repo.
+- The parent workspace generator records Spotlight as its own public nested repository without absorbing its source into the parent repo.
 <!--/ai-->
