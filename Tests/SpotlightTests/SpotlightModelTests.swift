@@ -68,6 +68,13 @@ private func app(_ name: String, path: String? = nil, bundleIdentifier: String? 
     #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
 }
 
+@Test func bundleIdentifierKeepsAnUpstreamProductNameSearchable() {
+    let chatGPT = app("ChatGPT", bundleIdentifier: "com.openai.codex")
+    let matches = SpotlightModel.matches(query: "codex", applications: [chatGPT])
+    #expect(matches.first?.application == chatGPT)
+    #expect(SpotlightModel.uniqueMatch(query: "codex", matches: matches) == chatGPT)
+}
+
 @Test func excludedApplicationsDoNotReachSpotlightResults() {
     let safari = app("Safari")
     let mail = app("Mail")

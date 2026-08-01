@@ -54,7 +54,10 @@ enum SpotlightModel {
     static func matches(query: String, applications: [ApplicationRecord], limit: Int = resultLimit) -> [ApplicationMatch] {
         let query = normalized(query)
         let scored = applications.compactMap { application -> ApplicationMatch? in
-            guard let score = score(query: query, name: normalized(application.name)) else { return nil }
+            let searchTerms = [application.name, application.bundleIdentifier]
+                .compactMap { $0 }
+                .map(normalized)
+            guard let score = searchTerms.compactMap({ score(query: query, name: $0) }).max() else { return nil }
             return ApplicationMatch(application: application, score: score)
         }
         return scored.sorted {
