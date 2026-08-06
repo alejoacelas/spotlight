@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Testing
 
 ## Automated model tests
@@ -36,4 +40,3 @@ Spotlight accepts development-only `--demo` and `--demo-query=…` arguments. Th
 For keyboard commands, a short Swift command creates `CGEvent` key events and posts them directly to the running Spotlight's process ID. This exercises the same AppKit key-equivalent path as a physical keypress. I use it for toggle, numbered-row, Command-K action, rename and shortcut-recorder checks.
 
 The in-app computer-control bridge was also attempted, but it did not return app state in this run. The local macOS tools above provided deterministic evidence instead.
-<!--/ai-->

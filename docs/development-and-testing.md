@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # How Spotlight Is Built and Tested
 
 Spotlight is a native Swift app. I develop it from the terminal, exercise its real signed bundle against macOS and keep the search rules covered by fast automated tests.
@@ -20,4 +24,3 @@ Spotlight is a native Swift app. I develop it from the terminal, exercise its re
 - [Permissions and restrictions](permissions.md) separates permissions Spotlight needs from actions that require the user's confirmation while I work.
 - [Feature ideas](feature-ideas.md) prioritizes further ways to make movement around the computer faster.
 - [Faster future development](development-affordances.md) lists reusable infrastructure and inputs that would shorten future Raycast-style work.
-<!--/ai-->

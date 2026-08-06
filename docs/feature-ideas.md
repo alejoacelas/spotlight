@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Feature Ideas
 
 The filter is simple: reduce the time or attention required to move from an intention to the right application, window, file or action.
@@ -43,4 +47,3 @@ These widen the app's privacy and permission surface. Clipboard history and syst
 - Automatic catalog refresh when applications are installed, moved or removed.
 - Export and import aliases, shortcuts and workflows as readable JSON.
 - A safe mode that starts without third-party commands if one crashes repeatedly.
-<!--/ai-->

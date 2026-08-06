@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Faster Future Development
 
 The fastest route to a broader Raycast-style tool is to make each new command mostly data and business logic, while one tested shell owns search, ranking, actions, shortcuts and presentation.
@@ -49,4 +53,3 @@ A 30-second screen recording of the desired interaction is more useful than a lo
 - If UI automation becomes central, grant its signed test driver Accessibility once rather than granting changing command-line binaries repeatedly.
 
 The production app should continue using the least privileged API available. Development convenience is not a reason to add Accessibility to Spotlight when Carbon, AppKit or `NSWorkspace` can provide the feature directly.
-<!--/ai-->

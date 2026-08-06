@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Spotlight
 
 My small, typo-tolerant macOS app finder. Results rerank by match quality and recent use with every character, match inside names as well as at their start, and the only remaining match opens immediately after two characters.
@@ -14,4 +18,3 @@ Use Command-1 through Command-6 to open a visible result. Select an application 
 [How Spotlight is built and tested](docs/development-and-testing.md) links to the development workflow, macOS interfaces, test methods and permission boundaries.
 
 The build uses the stable local signing identity shared with my other Mac utility. The stable signature keeps macOS's identity for the app across rebuilds; the build fails instead of falling back to ad-hoc signing.
-<!--/ai-->

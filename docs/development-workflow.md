@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Development Workflow
 
 ## Source and build tools
@@ -20,4 +24,3 @@ The build script checks Keychain for the stable local signing identity, signs wi
 - `git diff --check`, scoped staging and `git status` catch whitespace mistakes and prevent unrelated workspace changes from entering a commit.
 - `gh` and the connected GitHub app push the branch and create the review pull request.
 - The parent workspace generator records Spotlight as its own public nested repository without absorbing its source into the parent repo.
-<!--/ai-->

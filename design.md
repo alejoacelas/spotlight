@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Design
 
 - Search installed `.app` bundles in the user, local and system Applications folders.
@@ -13,4 +17,3 @@
 - Register the chosen global shortcut through Carbon, so no Accessibility permission is required.
 - Register the signed main application with macOS as a login item on first launch.
 - Show at most six compact result rows.
-<!--/ai-->

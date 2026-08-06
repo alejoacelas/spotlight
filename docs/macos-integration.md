@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # macOS Integration
 
 ## Keyboard shortcut and window
@@ -22,4 +26,3 @@ AppKit supplies the borderless `NSPanel`, search field, result table, icons, key
 ## Login startup
 
 `SMAppService.mainApp.register()` asks macOS to start the signed main app at login. This needs no administrator password. macOS may show a one-time notification and exposes the entry in System Settings under Login Items.
-<!--/ai-->

@@ -1,4 +1,8 @@
-<!--ai-->
+---
+human_edit_tracking:
+  enabled: true
+  history: []
+---
 # Permissions and Restrictions
 
 ## Permissions Spotlight needs
@@ -30,4 +34,3 @@ When direct graphical computer control is involved, I must pause immediately bef
 Some steps must be handed to the user entirely, including entering a new password and bypassing browser security warnings.
 
 For this work, none of those prompts were necessary. The requested installation and login registration were in scope, the signing identity already existed, and Spotlight deliberately avoided APIs that would trigger an Accessibility prompt. If the signing identity were missing or macOS required a new privacy grant, I would stop at that point and ask the user to create or approve it.
-<!--/ai-->
