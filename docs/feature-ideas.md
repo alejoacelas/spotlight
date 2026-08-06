@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # Feature Ideas
 
 The filter is simple: reduce the time or attention required to move from an intention to the right application, window, file or action.

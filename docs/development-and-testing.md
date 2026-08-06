@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # How Spotlight Is Built and Tested
 
 Spotlight is a native Swift app. I develop it from the terminal, exercise its real signed bundle against macOS and keep the search rules covered by fast automated tests.

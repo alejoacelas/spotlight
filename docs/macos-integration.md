@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # macOS Integration
 
 ## Keyboard shortcut and window

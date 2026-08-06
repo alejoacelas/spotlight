@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # Design
 
 - Search installed `.app` bundles in the user, local and system Applications folders.

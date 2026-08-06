@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # Faster Future Development
 
 The fastest route to a broader Raycast-style tool is to make each new command mostly data and business logic, while one tested shell owns search, ranking, actions, shortcuts and presentation.
