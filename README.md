@@ -1,8 +1,3 @@
----
-human_edit_tracking:
-  enabled: true
-  history: []
----
 # Spotlight
 
 My small, typo-tolerant macOS app finder. Results rerank by match quality and recent use with every character, match inside names as well as at their start, and the only remaining match opens immediately after two characters.
