@@ -8,13 +8,31 @@ struct ApplicationRecord: Hashable, Sendable {
     let bundleVersion: String?
     let lastUsedAt: Date?
 
-    init(name: String, originalName: String? = nil, url: URL, bundleIdentifier: String?, bundleVersion: String? = nil, lastUsedAt: Date? = nil) {
+    init(
+        name: String,
+        originalName: String? = nil,
+        url: URL,
+        bundleIdentifier: String?,
+        bundleVersion: String? = nil,
+        lastUsedAt: Date? = nil
+    ) {
         self.name = name
         self.originalName = originalName ?? name
         self.url = url
         self.bundleIdentifier = bundleIdentifier
         self.bundleVersion = bundleVersion
         self.lastUsedAt = lastUsedAt
+    }
+
+    func withLastUsedAt(_ date: Date?) -> ApplicationRecord {
+        ApplicationRecord(
+            name: name,
+            originalName: originalName,
+            url: url,
+            bundleIdentifier: bundleIdentifier,
+            bundleVersion: bundleVersion,
+            lastUsedAt: date
+        )
     }
 }
 
@@ -43,25 +61,54 @@ enum ApplicationExclusions {
     }
 }
 
+enum ApplicationRecency {
+    static func applying(_ timestamps: [String: TimeInterval], to application: ApplicationRecord) -> ApplicationRecord {
+        guard let timestamp = timestamps[ApplicationAliases.key(for: application)] else { return application }
+        let persisted = Date(timeIntervalSince1970: timestamp)
+        return application.withLastUsedAt(max(application.lastUsedAt ?? .distantPast, persisted))
+    }
+}
+
+enum MatchTier: Int, Comparable, Sendable {
+    case exact
+    case prefix
+    case wordPrefix
+    case substring
+    case acronym
+    case subsequence
+    case typo
+    case empty
+
+    static func < (lhs: MatchTier, rhs: MatchTier) -> Bool { lhs.rawValue < rhs.rawValue }
+}
+
 struct ApplicationMatch: Equatable, Sendable {
     let application: ApplicationRecord
-    let score: Int
+    let tier: MatchTier
+
+    var score: Int { 10_000 - tier.rawValue * 1_000 }
 }
 
 enum SpotlightModel {
     static let resultLimit = 6
 
-    static func matches(query: String, applications: [ApplicationRecord], limit: Int = resultLimit) -> [ApplicationMatch] {
+    static func matches(
+        query: String,
+        applications: [ApplicationRecord],
+        limit: Int = resultLimit
+    ) -> [ApplicationMatch] {
         let query = normalized(query)
-        let scored = applications.compactMap { application -> ApplicationMatch? in
-            let searchTerms = [application.name, application.bundleIdentifier]
+        let matched = applications.compactMap { application -> ApplicationMatch? in
+            let searchTerms = Set([application.name, application.originalName, application.bundleIdentifier]
                 .compactMap { $0 }
-                .map(normalized)
-            guard let score = searchTerms.compactMap({ score(query: query, name: $0) }).max() else { return nil }
-            return ApplicationMatch(application: application, score: score)
+                .map(normalized))
+            guard let tier = searchTerms.compactMap({ matchTier(query: query, name: $0) }).min() else {
+                return nil
+            }
+            return ApplicationMatch(application: application, tier: tier)
         }
-        return scored.sorted {
-            if $0.score != $1.score { return $0.score > $1.score }
+        return matched.sorted {
+            if $0.tier != $1.tier { return $0.tier < $1.tier }
             if $0.application.lastUsedAt != $1.application.lastUsedAt {
                 return ($0.application.lastUsedAt ?? .distantPast) > ($1.application.lastUsedAt ?? .distantPast)
             }
@@ -76,44 +123,37 @@ enum SpotlightModel {
         guard query.count >= 2 else { return nil }
         if matches.count == 1 { return matches[0].application }
 
-        // After three characters, an exact prefix is decisive unless another result
-        // also begins with the query. Weaker substring, subsequence, and typo matches
-        // remain visible without making common app names slower to open.
         guard query.count >= 3,
               let first = matches.first,
-              first.score >= 8_700,
-              matches.dropFirst().first?.score ?? 0 < 8_700 else { return nil }
+              first.tier <= .wordPrefix,
+              matches.dropFirst().first?.tier ?? .empty > .wordPrefix else { return nil }
         return first.application
     }
 
     static func normalized(_ value: String) -> String {
-        value.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: .current)
-            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
-            .joined(separator: " ")
+        value.folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: .current
+        )
+        .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        .joined(separator: " ")
     }
 
-    private static func score(query: String, name: String) -> Int? {
-        guard !query.isEmpty else { return 1_000 }
+    private static func matchTier(query: String, name: String) -> MatchTier? {
+        guard !query.isEmpty else { return .empty }
         guard !name.isEmpty else { return nil }
-        if name == query { return 10_000 }
-        if name.hasPrefix(query) { return 9_000 - (name.count - query.count) }
+        if name == query { return .exact }
+        if name.hasPrefix(query) { return .prefix }
 
         let words = name.split(separator: " ").map(String.init)
-        if let word = words.first(where: { $0.hasPrefix(query) }) {
-            return 8_700 - (word.count - query.count)
-        }
-        if let range = name.range(of: query) {
-            let offset = name.distance(from: name.startIndex, to: range.lowerBound)
-            return 8_300 - offset * 12 - (name.count - query.count)
-        }
+        if words.contains(where: { $0.hasPrefix(query) }) { return .wordPrefix }
+        if name.range(of: query) != nil { return .substring }
 
         let initials = String(words.compactMap(\.first))
-        if initials.hasPrefix(query.replacingOccurrences(of: " ", with: "")) {
-            return 7_900 - (initials.count - query.count)
-        }
+        if initials.hasPrefix(query.replacingOccurrences(of: " ", with: "")) { return .acronym }
 
-        if query.count >= 4, let gaps = subsequenceGaps(query: query, in: name) {
-            return 7_200 - gaps * 16 - (name.count - query.count)
+        if query.count >= 4, subsequenceGaps(query: query, in: name) != nil {
+            return .subsequence
         }
 
         guard query.count >= 4 else { return nil }
@@ -124,7 +164,7 @@ enum SpotlightModel {
             return editDistance(query, comparable)
         }
         guard let distance = distances.min(), distance <= typoAllowance else { return nil }
-        return 7_600 - distance * 180 - abs(name.count - query.count)
+        return .typo
     }
 
     private static func subsequenceGaps(query: String, in name: String) -> Int? {

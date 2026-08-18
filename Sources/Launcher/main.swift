@@ -15,6 +15,8 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
     private var catalogWatcher: ApplicationCatalogWatcher?
     private var catalogError: String?
     private var catalogReloadGeneration = 0
+    private let metrics = LauncherMetrics()
+    private var recentUse = LauncherPreferences.loadRecentUse()
     private var appHotKeys: [String: GlobalHotKey] = [:]
     private var appShortcutApplications: [String: URL] = [:]
     private var appShortcuts: [String: AppShortcut] = [:]
@@ -37,6 +39,9 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
         windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
         windowController.onRemove = { [weak self] application in self?.removeFromSpotlight(application) }
+        windowController.onSearchDuration = { [weak self] duration in
+            self?.metrics.recordSearch(seconds: duration)
+        }
         configureStatusItem()
         installMainHotKey(reportFailure: true)
         registerLoginItem()
@@ -73,9 +78,15 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
             let result = ApplicationCatalog.load()
             DispatchQueue.main.async {
                 guard generation == self.catalogReloadGeneration else { return }
+                let rankedResult = ApplicationCatalogResult(
+                    applications: result.applications.map {
+                        ApplicationRecency.applying(self.recentUse, to: $0)
+                    },
+                    failures: result.failures
+                )
                 self.catalogApplications = ApplicationCatalog.preservingLastGoodCatalog(
                     self.catalogApplications,
-                    after: result
+                    after: rankedResult
                 )
                 self.catalogError = result.failures.first.map {
                     "Application refresh incomplete — keeping previous results: \($0)"
@@ -94,7 +105,8 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ application: ApplicationRecord) {
-        markRecentlyUsed(application)
+        metrics.recordSelection(applicationKey: ApplicationAliases.key(for: application))
+        markRecentlyUsed(application, persist: true)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: application.url, configuration: configuration) { _, error in
@@ -110,7 +122,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         ) { [weak self] notification in
             guard let running = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
                   let application = self?.applications.first(where: { $0.bundleIdentifier == running.bundleIdentifier }) else { return }
-            self?.markRecentlyUsed(application)
+            self?.markRecentlyUsed(application, persist: false)
         }
         lifecycleObservers.append(observer)
     }
@@ -144,10 +156,18 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         if !unavailableAppShortcutKeys.isEmpty { registerAppShortcuts(reportFailures: false) }
     }
 
-    private func markRecentlyUsed(_ application: ApplicationRecord) {
+    private func markRecentlyUsed(_ application: ApplicationRecord, persist: Bool) {
+        let date = Date()
+        if persist {
+            recentUse[ApplicationAliases.key(for: application)] = date.timeIntervalSince1970
+            LauncherPreferences.saveRecentUse(recentUse)
+        }
+        catalogApplications = catalogApplications.map {
+            $0.url == application.url ? $0.withLastUsedAt(date) : $0
+        }
         applications = applications.map {
             guard $0.url == application.url else { return $0 }
-            return ApplicationRecord(name: $0.name, originalName: $0.originalName, url: $0.url, bundleIdentifier: $0.bundleIdentifier, bundleVersion: $0.bundleVersion, lastUsedAt: Date())
+            return $0.withLastUsedAt(date)
         }
         windowController.setApplications(applications)
     }

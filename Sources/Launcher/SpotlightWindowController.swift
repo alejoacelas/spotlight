@@ -37,10 +37,12 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     private var shortcuts: [String: AppShortcut] = [:]
     private var unavailableShortcutKeys = Set<String>()
     private var launchedForQuery: String?
+    private var autoLaunchWorkItem: DispatchWorkItem?
     var onLaunch: ((ApplicationRecord) -> Void)?
     var onRename: ((ApplicationRecord, String) -> Void)?
     var onSetShortcut: ((ApplicationRecord, AppShortcut?) -> String?)?
     var onRemove: ((ApplicationRecord) -> Void)?
+    var onSearchDuration: ((TimeInterval) -> Void)?
 
     init() {
         let panel = SpotlightPanel(
@@ -54,7 +56,9 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         panel.actionsAction = { [weak self] in self?.promptForActionsSelected() }
         panel.openIndexAction = { [weak self] index in self?.launch(at: index) }
         panel.resignKeyAction = { [weak self] in
-            guard let self, self.window?.attachedSheet == nil else { return }
+            guard let self,
+                  self.window?.isVisible == true,
+                  self.window?.attachedSheet == nil else { return }
             self.hide()
         }
         panel.delegate = panel
@@ -93,6 +97,8 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     }
 
     func hide() {
+        autoLaunchWorkItem?.cancel()
+        autoLaunchWorkItem = nil
         if let sheet = window?.attachedSheet { window?.endSheet(sheet, returnCode: .abort) }
         window?.orderOut(nil)
         searchField.stringValue = ""
@@ -108,12 +114,24 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     }
 
     private func queryDidChange() {
+        autoLaunchWorkItem?.cancel()
+        autoLaunchWorkItem = nil
         updateResults()
         let query = searchField.stringValue
+        if let editor = searchField.currentEditor() as? NSTextView, editor.hasMarkedText() {
+            return
+        }
         guard launchedForQuery != query,
               let match = SpotlightModel.uniqueMatch(query: query, matches: matches) else { return }
-        launchedForQuery = query
-        launch(match)
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self,
+                  self.searchField.stringValue == query,
+                  self.launchedForQuery != query else { return }
+            self.launchedForQuery = query
+            self.launch(match)
+        }
+        autoLaunchWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: workItem)
     }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
@@ -276,7 +294,9 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     }
 
     private func updateResults() {
+        let started = ProcessInfo.processInfo.systemUptime
         matches = SpotlightModel.matches(query: searchField.stringValue, applications: applications)
+        onSearchDuration?(ProcessInfo.processInfo.systemUptime - started)
         resizeWindow(for: matches.count)
         tableView.reloadData()
         emptyLabel.isHidden = !matches.isEmpty

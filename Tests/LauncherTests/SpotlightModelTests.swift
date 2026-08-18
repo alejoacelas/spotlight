@@ -73,8 +73,77 @@ private func app(_ name: String, path: String? = nil, bundleIdentifier: String? 
     #expect(renamed.name == "Web")
     #expect(renamed.originalName == "Safari")
     #expect(SpotlightModel.matches(query: "web", applications: [renamed]).count == 1)
-    #expect(SpotlightModel.matches(query: "safari", applications: [renamed]).isEmpty)
+    #expect(SpotlightModel.matches(query: "safari", applications: [renamed]).count == 1)
     #expect(ApplicationAliases.applying([:], to: renamed).name == "Safari")
+}
+
+@Test func rankingFixtureMatchesExpectedOrder() throws {
+    struct Fixture: Decodable {
+        struct FixtureApplication: Decodable {
+            let name: String
+            let lastUsedAt: TimeInterval?
+        }
+        struct FixtureCase: Decodable {
+            let query: String
+            let expected: [String]
+        }
+        let applications: [FixtureApplication]
+        let cases: [FixtureCase]
+    }
+
+    let url = try #require(Bundle.module.url(forResource: "ranking", withExtension: "json"))
+    let fixture = try JSONDecoder().decode(Fixture.self, from: Data(contentsOf: url))
+    let applications = fixture.applications.map {
+        app(
+            $0.name,
+            lastUsedAt: $0.lastUsedAt.map(Date.init(timeIntervalSince1970:))
+        )
+    }
+
+    for testCase in fixture.cases {
+        let names = SpotlightModel.matches(query: testCase.query, applications: applications)
+            .map(\.application.name)
+        #expect(Array(names.prefix(testCase.expected.count)) == testCase.expected, "Query: \(testCase.query)")
+    }
+}
+
+@Test func rankingStaysWithinTheTypingBudget() {
+    let applications = (0..<500).map { app("Application \(String(format: "%03d", $0))") }
+    var durations: [UInt64] = []
+    for _ in 0..<200 {
+        let started = DispatchTime.now().uptimeNanoseconds
+        _ = SpotlightModel.matches(query: "app", applications: applications)
+        durations.append(DispatchTime.now().uptimeNanoseconds - started)
+    }
+    durations.sort()
+    let p95Milliseconds = Double(durations[Int(Double(durations.count) * 0.95)]) / 1_000_000
+    #expect(p95Milliseconds < 16, "p95 was \(p95Milliseconds) ms")
+}
+
+@Test @MainActor func autoLaunchWaitsAndCancelsWhenTypingContinues() async throws {
+    let controller = SpotlightWindowController()
+    controller.setApplications([app("Safari"), app("Calendar"), app("Calculator")])
+    var launched: [String] = []
+    controller.onLaunch = { launched.append($0.name) }
+
+    controller.setDemoQuery("saf")
+    controller.setDemoQuery("cal")
+    try await Task.sleep(for: .milliseconds(150))
+
+    #expect(launched.isEmpty)
+}
+
+@Test @MainActor func autoLaunchOpensStableUniqueMatchAfterDelay() async throws {
+    let controller = SpotlightWindowController()
+    controller.setApplications([app("Safari"), app("Mail")])
+    var launched: [String] = []
+    controller.onLaunch = { launched.append($0.name) }
+
+    controller.setDemoQuery("saf")
+    #expect(launched.isEmpty)
+    try await Task.sleep(for: .milliseconds(150))
+
+    #expect(launched == ["Safari"])
 }
 
 @Test func bundleIdentifierKeepsAnUpstreamProductNameSearchable() {

@@ -40,3 +40,27 @@ import Testing
     #expect(loaded.shortcuts == ["app": shortcut])
     #expect(!loaded.resetCorruptValue)
 }
+
+@Test func recentUsePersistsByStableApplicationKey() throws {
+    let suite = "LauncherTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    LauncherPreferences.saveRecentUse(["com.example.app": 123], to: defaults)
+
+    #expect(LauncherPreferences.loadRecentUse(from: defaults) == ["com.example.app": 123])
+}
+
+@Test func metricsStoreCountsWithoutQueryText() throws {
+    let suite = "LauncherTests.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let metrics = LauncherMetrics(defaults: defaults)
+
+    for _ in 0..<25 { metrics.recordSearch(seconds: 0.001) }
+    metrics.recordSelection(applicationKey: "com.example.app")
+
+    #expect(defaults.integer(forKey: "metricSearchCount") == 25)
+    #expect(defaults.dictionary(forKey: "metricSelections") as? [String: Int] == ["com.example.app": 1])
+    #expect(defaults.dictionaryRepresentation().keys.allSatisfy { !$0.lowercased().contains("query") })
+}
