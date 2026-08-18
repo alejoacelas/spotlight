@@ -3,24 +3,89 @@
 
 final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     private let windowController = LauncherWindowController()
-    private var hotKey: GlobalHotKey!
+    private var hotKey: GlobalHotKey?
     private var statusItem: NSStatusItem!
-    private var shortcut = LauncherShortcut(rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? "") ?? .commandSpace
+    private var desiredShortcut = LauncherShortcut(
+        rawValue: UserDefaults.standard.string(forKey: "shortcut") ?? ""
+    ) ?? .commandSpace
+    private var registeredShortcut: LauncherShortcut?
+    private var mainShortcutError: String?
+    private var catalogApplications: [ApplicationRecord] = []
     private var applications: [ApplicationRecord] = []
+    private var catalogWatcher: ApplicationCatalogWatcher?
+    private var catalogError: String?
+    private var catalogReloadGeneration = 0
+    private let metrics = LauncherMetrics()
+    private var recentUse = LauncherPreferences.loadRecentUse()
+    private var appHotKeys: [String: GlobalHotKey] = [:]
+    private var appShortcutApplications: [String: URL] = [:]
+    private var appShortcuts: [String: AppShortcut] = [:]
+    private var unavailableAppShortcutKeys = Set<String>()
+    private var lifecycleObservers: [NSObjectProtocol] = []
+    private var integrationOutputPath: String? {
+        CommandLine.arguments.first { $0.hasPrefix("--integration-test-output=") }?
+            .dropFirst("--integration-test-output=".count).description
+    }
+    private var aliases: [String: String] {
+        get { UserDefaults.standard.dictionary(forKey: "applicationAliases") as? [String: String] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: "applicationAliases") }
+    }
+    private var excludedApplicationKeys: Set<String> {
+        get { Set(UserDefaults.standard.stringArray(forKey: "excludedApplications") ?? []) }
+        set { UserDefaults.standard.set(newValue.sorted(), forKey: "excludedApplications") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        windowController.onLaunch = { [weak self] application in self?.open(application) }
+        let shortcutLoad = LauncherPreferences.loadAppShortcuts()
+        appShortcuts = shortcutLoad.shortcuts
+        windowController.onLaunch = { [weak self] application in
+            if let path = self?.integrationOutputPath {
+                self?.recordIntegrationLaunch(application, at: path)
+            } else {
+                self?.open(application)
+            }
+        }
+        windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
+        windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
+        windowController.onRemove = { [weak self] application in self?.removeFromLauncher(application) }
+        windowController.onSearchDuration = { [weak self] duration in
+            self?.metrics.recordSearch(seconds: duration)
+        }
         configureStatusItem()
-        hotKey = GlobalHotKey { [weak self] in DispatchQueue.main.async { self?.showLauncher() } }
-        registerShortcut(shortcut, reportFailure: true)
+        installMainHotKey(reportFailure: true)
+        if integrationOutputPath != nil {
+            windowController.setApplications((1...6).map {
+                ApplicationRecord(
+                    name: "Test App \($0)",
+                    url: URL(fileURLWithPath: "/Applications/Test App \($0).app"),
+                    bundleIdentifier: "com.alejoacelas.launcher.test-app-\($0)"
+                )
+            })
+            if CommandLine.arguments.contains("--demo") { showLauncher() }
+            return
+        }
         registerLoginItem()
+        observeApplicationUse()
+        observeShortcutLifecycle()
+        startCatalogWatcher()
+        if shortcutLoad.resetCorruptValue {
+            presentError("Saved application shortcuts were invalid and have been reset.")
+        }
         let demoQuery = CommandLine.arguments.first { $0.hasPrefix("--demo-query=") }?.dropFirst("--demo-query=".count).description
         reloadApplications(showWhenReady: CommandLine.arguments.contains("--demo") || demoQuery != nil, demoQuery: demoQuery)
     }
 
     func applicationWillResignActive(_ notification: Notification) {
-        if windowController.window?.isVisible == true { windowController.hide() }
+        if windowController.window?.isVisible == true, windowController.window?.attachedSheet == nil {
+            windowController.hide()
+        }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        for observer in lifecycleObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
     }
 
     private func showLauncher() {
@@ -28,11 +93,30 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func reloadApplications(showWhenReady: Bool = false, demoQuery: String? = nil) {
+        catalogReloadGeneration += 1
+        let generation = catalogReloadGeneration
         DispatchQueue.global(qos: .userInitiated).async {
-            let applications = ApplicationCatalog.load()
+            let result = ApplicationCatalog.load()
             DispatchQueue.main.async {
-                self.applications = applications
-                self.windowController.setApplications(applications)
+                guard generation == self.catalogReloadGeneration else { return }
+                let rankedResult = ApplicationCatalogResult(
+                    applications: result.applications.map {
+                        ApplicationRecency.applying(self.recentUse, to: $0)
+                    },
+                    failures: result.failures
+                )
+                self.catalogApplications = ApplicationCatalog.preservingLastGoodCatalog(
+                    self.catalogApplications,
+                    after: rankedResult
+                )
+                self.catalogError = result.failures.first.map {
+                    "Application refresh incomplete — keeping previous results: \($0)"
+                }
+                self.applications = ApplicationExclusions.applying(self.excludedApplicationKeys, to: self.catalogApplications)
+                    .map { ApplicationAliases.applying(self.aliases, to: $0) }
+                self.windowController.setApplications(self.applications)
+                self.registerAppShortcuts(reportFailures: true)
+                self.configureStatusMenu()
                 if showWhenReady {
                     self.showLauncher()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
@@ -42,6 +126,8 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func open(_ application: ApplicationRecord) {
+        metrics.recordSelection(applicationKey: ApplicationAliases.key(for: application))
+        markRecentlyUsed(application, persist: true)
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: application.url, configuration: configuration) { _, error in
@@ -49,14 +135,211 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func registerShortcut(_ shortcut: LauncherShortcut, reportFailure: Bool) {
-        let previous = self.shortcut
-        guard hotKey.register(shortcut) else {
-            _ = hotKey.register(previous)
-            if reportFailure { presentError("\(shortcut.title) is already in use. Choose the other shortcut from the Launcher menu.") }
+    private func recordIntegrationLaunch(_ application: ApplicationRecord, at path: String) {
+        let line = "\(application.name)\n"
+        let url = URL(fileURLWithPath: path)
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line.utf8))
+        } catch {
+            presentError("Integration test log failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func observeApplicationUse() {
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let running = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  let application = self?.applications.first(where: { $0.bundleIdentifier == running.bundleIdentifier }) else { return }
+            self?.markRecentlyUsed(application, persist: false)
+        }
+        lifecycleObservers.append(observer)
+    }
+
+    private func observeShortcutLifecycle() {
+        for name in [NSWorkspace.didWakeNotification, NSWorkspace.sessionDidBecomeActiveNotification] {
+            let observer = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.retryUnavailableShortcuts()
+                self?.catalogWatcher?.restart()
+                self?.reloadApplications()
+            }
+            lifecycleObservers.append(observer)
+        }
+    }
+
+    private func startCatalogWatcher() {
+        let watcher = ApplicationCatalogWatcher { [weak self] in self?.reloadApplications() }
+        catalogWatcher = watcher
+        if !watcher.start() {
+            catalogError = "Application monitoring could not start; use Refresh Applications after installing or removing apps."
+            configureStatusMenu()
+        }
+    }
+
+    private func retryUnavailableShortcuts() {
+        if registeredShortcut == nil { installMainHotKey(reportFailure: false) }
+        if !unavailableAppShortcutKeys.isEmpty { registerAppShortcuts(reportFailures: false) }
+    }
+
+    private func markRecentlyUsed(_ application: ApplicationRecord, persist: Bool) {
+        let date = Date()
+        if persist {
+            recentUse[ApplicationAliases.key(for: application)] = date.timeIntervalSince1970
+            LauncherPreferences.saveRecentUse(recentUse)
+        }
+        catalogApplications = catalogApplications.map {
+            $0.url == application.url ? $0.withLastUsedAt(date) : $0
+        }
+        applications = applications.map {
+            guard $0.url == application.url else { return $0 }
+            return $0.withLastUsedAt(date)
+        }
+        windowController.setApplications(applications)
+    }
+
+    private func rename(_ application: ApplicationRecord, to proposedName: String) {
+        let name = proposedName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key = ApplicationAliases.key(for: application)
+        var updatedAliases = aliases
+        if name.isEmpty || name == application.originalName {
+            updatedAliases.removeValue(forKey: key)
+        } else {
+            updatedAliases[key] = name
+        }
+        aliases = updatedAliases
+        applications = applications.map { ApplicationAliases.applying(updatedAliases, to: $0) }
+        windowController.setApplications(applications)
+    }
+
+    private func removeFromLauncher(_ application: ApplicationRecord) {
+        let key = ApplicationAliases.key(for: application)
+        var excluded = excludedApplicationKeys
+        excluded.insert(key)
+        excludedApplicationKeys = excluded
+        appHotKeys[key] = nil
+        appShortcutApplications[key] = nil
+        unavailableAppShortcutKeys.remove(key)
+        applications.removeAll { ApplicationAliases.key(for: $0) == key }
+        windowController.setApplications(applications)
+        windowController.setShortcuts(appShortcuts, unavailable: unavailableAppShortcutKeys)
+        configureStatusMenu()
+    }
+
+    private func setShortcut(_ shortcut: AppShortcut?, for application: ApplicationRecord) -> String? {
+        let key = ApplicationAliases.key(for: application)
+        let previous = appShortcuts[key]
+        if previous == shortcut { return nil }
+
+        if let shortcut {
+            do {
+                let candidate = try makeAppHotKey(for: application)
+                guard candidate.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) else {
+                    return "\(shortcut.displayName) is already used by Launcher, macOS, or another application."
+                }
+                appHotKeys[key] = candidate
+                appShortcutApplications[key] = application.url
+                appShortcuts[key] = shortcut
+                unavailableAppShortcutKeys.remove(key)
+            } catch {
+                return error.localizedDescription
+            }
+        } else {
+            appHotKeys[key] = nil
+            appShortcutApplications[key] = nil
+            appShortcuts[key] = nil
+            unavailableAppShortcutKeys.remove(key)
+        }
+        LauncherPreferences.saveAppShortcuts(appShortcuts)
+        windowController.setShortcuts(appShortcuts, unavailable: unavailableAppShortcutKeys)
+        return nil
+    }
+
+    private func registerAppShortcuts(reportFailures: Bool) {
+        let applicationsByKey = Dictionary(uniqueKeysWithValues: applications.map {
+            (ApplicationAliases.key(for: $0), $0)
+        })
+        for key in Array(appHotKeys.keys) where appShortcuts[key] == nil || applicationsByKey[key] == nil || appShortcutApplications[key] != applicationsByKey[key]?.url {
+            appHotKeys[key] = nil
+            appShortcutApplications[key] = nil
+        }
+
+        var unavailable: [String] = []
+        for key in appShortcuts.keys.sorted() {
+            guard let shortcut = appShortcuts[key] else { continue }
+            guard let application = applicationsByKey[key], appHotKeys[key] == nil else { continue }
+            do {
+                let candidate = try makeAppHotKey(for: application)
+                if candidate.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) {
+                    appHotKeys[key] = candidate
+                    appShortcutApplications[key] = application.url
+                    unavailableAppShortcutKeys.remove(key)
+                } else {
+                    unavailableAppShortcutKeys.insert(key)
+                    unavailable.append("\(shortcut.displayName) for \(application.name)")
+                }
+            } catch {
+                unavailableAppShortcutKeys.insert(key)
+                unavailable.append("\(shortcut.displayName) for \(application.name): \(error.localizedDescription)")
+            }
+        }
+        windowController.setShortcuts(appShortcuts, unavailable: unavailableAppShortcutKeys)
+        if reportFailures, !unavailable.isEmpty {
+            presentError("These shortcuts could not be registered: \(unavailable.joined(separator: ", ")).")
+        }
+    }
+
+    private func makeAppHotKey(for application: ApplicationRecord) throws -> GlobalHotKey {
+        try GlobalHotKey { [weak self] in
+            DispatchQueue.main.async { self?.open(application) }
+        }
+    }
+
+    private func installMainHotKey(reportFailure: Bool) {
+        do {
+            if hotKey == nil {
+                hotKey = try GlobalHotKey { [weak self] in
+                    DispatchQueue.main.async { self?.windowController.toggle() }
+                }
+            }
+            guard let hotKey, hotKey.register(desiredShortcut) else {
+                mainShortcutError = "\(desiredShortcut.title) is already in use by macOS or another application."
+                registeredShortcut = nil
+                configureStatusMenu()
+                if reportFailure, let mainShortcutError { presentError(mainShortcutError) }
+                return
+            }
+            registeredShortcut = desiredShortcut
+            mainShortcutError = nil
+            configureStatusMenu()
+        } catch {
+            hotKey = nil
+            registeredShortcut = nil
+            mainShortcutError = error.localizedDescription
+            configureStatusMenu()
+            if reportFailure { presentError(error.localizedDescription) }
+        }
+    }
+
+    private func changeMainShortcut(to shortcut: LauncherShortcut) {
+        guard let hotKey, hotKey.register(shortcut) else {
+            presentError("\(shortcut.title) is already in use. \(desiredShortcut.title) remains active.")
             return
         }
-        self.shortcut = shortcut
+        desiredShortcut = shortcut
+        registeredShortcut = shortcut
+        mainShortcutError = nil
         UserDefaults.standard.set(shortcut.rawValue, forKey: "shortcut")
         configureStatusMenu()
     }
@@ -82,17 +365,36 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
         openItem.target = self
         menu.addItem(.separator())
         for choice in LauncherShortcut.allCases {
-            let item = menu.addItem(withTitle: choice.title, action: #selector(changeShortcut(_:)), keyEquivalent: "")
+            let unavailable = choice == desiredShortcut && registeredShortcut == nil
+            let title = unavailable ? "\(choice.title) — unavailable" : choice.title
+            let item = menu.addItem(withTitle: title, action: #selector(changeShortcut(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = choice.rawValue
-            item.state = choice == shortcut ? .on : .off
+            item.state = choice == registeredShortcut ? .on : .off
+        }
+        if let mainShortcutError {
+            let error = menu.addItem(withTitle: mainShortcutError, action: nil, keyEquivalent: "")
+            error.isEnabled = false
+        }
+        if !unavailableAppShortcutKeys.isEmpty {
+            let count = unavailableAppShortcutKeys.count
+            let label = menu.addItem(
+                withTitle: "\(count) application shortcut\(count == 1 ? "" : "s") unavailable",
+                action: nil,
+                keyEquivalent: ""
+            )
+            label.isEnabled = false
+        }
+        if let catalogError {
+            let error = menu.addItem(withTitle: catalogError, action: nil, keyEquivalent: "")
+            error.isEnabled = false
         }
         menu.addItem(.separator())
         let refresh = menu.addItem(withTitle: "Refresh Applications", action: #selector(refreshFromMenu), keyEquivalent: "")
         refresh.target = self
-        let login = menu.addItem(withTitle: "Start at Login", action: nil, keyEquivalent: "")
-        login.state = SMAppService.mainApp.status == .enabled ? .on : .off
-        login.isEnabled = false
+        let restore = menu.addItem(withTitle: "Restore Removed Applications", action: #selector(restoreRemovedApplications), keyEquivalent: "")
+        restore.target = self
+        restore.isEnabled = !excludedApplicationKeys.isEmpty
         menu.addItem(.separator())
         let quit = menu.addItem(withTitle: "Quit Launcher", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
@@ -101,15 +403,22 @@ final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openFromMenu() { showLauncher() }
     @objc private func refreshFromMenu() { reloadApplications() }
+    @objc private func restoreRemovedApplications() {
+        excludedApplicationKeys = []
+        configureStatusMenu()
+        reloadApplications()
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 
     @objc private func changeShortcut(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String, let shortcut = LauncherShortcut(rawValue: rawValue) else { return }
-        registerShortcut(shortcut, reportFailure: true)
+        guard let rawValue = sender.representedObject as? String,
+              let shortcut = LauncherShortcut(rawValue: rawValue) else { return }
+        changeMainShortcut(to: shortcut)
     }
 
     private func presentError(_ message: String) {
         DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Launcher"

@@ -7,7 +7,11 @@ let package = Package(
     products: [.executable(name: "Launcher", targets: ["Launcher"])],
     targets: [
         .executableTarget(name: "Launcher"),
-        .testTarget(name: "LauncherTests", dependencies: ["Launcher"]),
+        .testTarget(
+            name: "LauncherTests",
+            dependencies: ["Launcher"],
+            resources: [.process("Fixtures")]
+        ),
     ],
     swiftLanguageModes: [.v5]
 )
