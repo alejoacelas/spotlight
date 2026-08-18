@@ -1,7 +1,7 @@
 import Foundation
 import Carbon
 import Testing
-@testable import Spotlight
+@testable import Launcher
 
 private func app(_ name: String, path: String? = nil, bundleIdentifier: String? = nil, bundleVersion: String? = nil, lastUsedAt: Date? = nil) -> ApplicationRecord {
     ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: bundleIdentifier, bundleVersion: bundleVersion, lastUsedAt: lastUsedAt)

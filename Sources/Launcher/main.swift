@@ -128,7 +128,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
             }
             guard hotKey.register(keyCode: shortcut.keyCode, carbonModifiers: shortcut.carbonModifiers) else {
                 if let previous { restoreShortcut(previous, for: application) }
-                return "\(shortcut.displayName) is already used by Spotlight, macOS, or another application."
+                return "\(shortcut.displayName) is already used by Launcher, macOS, or another application."
             }
             appHotKeys[key] = hotKey
             appShortcuts[key] = shortcut
@@ -175,7 +175,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         let previous = self.shortcut
         guard hotKey.register(shortcut) else {
             _ = hotKey.register(previous)
-            if reportFailure { presentError("\(shortcut.title) is already in use. Choose the other shortcut from the Spotlight menu.") }
+            if reportFailure { presentError("\(shortcut.title) is already in use. Choose the other shortcut from the Launcher menu.") }
             return
         }
         self.shortcut = shortcut
@@ -187,20 +187,20 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         do {
             if SMAppService.mainApp.status != .enabled { try SMAppService.mainApp.register() }
         } catch {
-            presentError("Spotlight could not start at login: \(error.localizedDescription)")
+            presentError("Launcher could not start at login: \(error.localizedDescription)")
         }
     }
 
     private func configureStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        statusItem.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Spotlight")
+        statusItem.button?.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: "Launcher")
         configureStatusMenu()
     }
 
     private func configureStatusMenu() {
         guard statusItem != nil else { return }
         let menu = NSMenu()
-        let openItem = menu.addItem(withTitle: "Open Spotlight", action: #selector(openFromMenu), keyEquivalent: "")
+        let openItem = menu.addItem(withTitle: "Open Launcher", action: #selector(openFromMenu), keyEquivalent: "")
         openItem.target = self
         menu.addItem(.separator())
         for choice in SpotlightShortcut.allCases {
@@ -219,7 +219,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         login.state = SMAppService.mainApp.status == .enabled ? .on : .off
         login.isEnabled = false
         menu.addItem(.separator())
-        let quit = menu.addItem(withTitle: "Quit Spotlight", action: #selector(quit), keyEquivalent: "q")
+        let quit = menu.addItem(withTitle: "Quit Launcher", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
         statusItem.menu = menu
     }
@@ -242,7 +242,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.async {
             let alert = NSAlert()
             alert.alertStyle = .warning
-            alert.messageText = "Spotlight"
+            alert.messageText = "Launcher"
             alert.informativeText = message
             alert.runModal()
         }

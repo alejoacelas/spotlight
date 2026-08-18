@@ -316,7 +316,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         alert.informativeText = "Choose an action for this application."
         alert.addButton(withTitle: "Rename…")
         alert.addButton(withTitle: "Assign Shortcut…")
-        alert.addButton(withTitle: "Remove from Spotlight")
+        alert.addButton(withTitle: "Remove from Launcher")
         alert.addButton(withTitle: "Cancel")
         NSApp.activate(ignoringOtherApps: true)
         alert.beginSheetModal(for: window) { [weak self] response in
@@ -336,7 +336,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
 
         let alert = NSAlert()
         alert.messageText = "Rename \(application.originalName)"
-        alert.informativeText = "This changes its name only in Spotlight. Leave it empty to restore the original name."
+        alert.informativeText = "This changes its name only in Launcher. Leave it empty to restore the original name."
         alert.accessoryView = input
         alert.addButton(withTitle: "Rename")
         alert.addButton(withTitle: "Cancel")
