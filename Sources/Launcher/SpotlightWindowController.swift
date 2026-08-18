@@ -1,11 +1,16 @@
 import AppKit
 
-final class SpotlightPanel: NSPanel {
+final class SpotlightPanel: NSPanel, NSWindowDelegate {
     var renameAction: (() -> Void)?
     var actionsAction: (() -> Void)?
     var openIndexAction: ((Int) -> Void)?
+    var resignKeyAction: (() -> Void)?
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    func windowDidResignKey(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in self?.resignKeyAction?() }
+    }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
@@ -39,14 +44,19 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     init() {
         let panel = SpotlightPanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 274),
-            styleMask: [.borderless, .fullSizeContentView],
+            styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
         super.init(window: panel)
-        panel.renameAction = { [weak self] in self?.promptForActionsSelected() }
+        panel.renameAction = { [weak self] in self?.promptToRenameSelected() }
         panel.actionsAction = { [weak self] in self?.promptForActionsSelected() }
         panel.openIndexAction = { [weak self] index in self?.launch(at: index) }
+        panel.resignKeyAction = { [weak self] in
+            guard let self, self.window?.attachedSheet == nil else { return }
+            self.hide()
+        }
+        panel.delegate = panel
         configureWindow(panel)
         configureContent()
     }
@@ -76,7 +86,6 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         if let visibleFrame = screen?.visibleFrame {
             window.setFrameOrigin(NSPoint(x: visibleFrame.midX - window.frame.width / 2, y: visibleFrame.maxY - window.frame.height - 110))
         }
-        NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
         window.makeFirstResponder(searchField)
     }
@@ -329,6 +338,11 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         }
     }
 
+    private func promptToRenameSelected() {
+        guard let application = selectedApplication() else { return }
+        promptToRename(application)
+    }
+
     private func promptToRename(_ application: ApplicationRecord) {
         guard let window else { return }
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
@@ -351,6 +365,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
 
     private func promptToSetShortcut(_ application: ApplicationRecord) {
         guard let window else { return }
+        NSApp.activate(ignoringOtherApps: true)
         let key = ApplicationAliases.key(for: application)
         let recorder = ShortcutRecorderView(shortcut: shortcuts[key])
         let alert = NSAlert()

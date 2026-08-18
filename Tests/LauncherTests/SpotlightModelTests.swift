@@ -3,6 +3,15 @@ import Carbon
 import Testing
 @testable import Launcher
 
+@Test @MainActor func launcherPanelDoesNotActivateTheApplication() {
+    let controller = SpotlightWindowController()
+    let panel = controller.window as? SpotlightPanel
+    #expect(panel != nil)
+    #expect(panel?.styleMask.contains(.nonactivatingPanel) == true)
+    #expect(panel?.canBecomeKey == true)
+    #expect(panel?.canBecomeMain == false)
+}
+
 private func app(_ name: String, path: String? = nil, bundleIdentifier: String? = nil, bundleVersion: String? = nil, lastUsedAt: Date? = nil) -> ApplicationRecord {
     ApplicationRecord(name: name, url: URL(fileURLWithPath: path ?? "/Applications/\(name).app"), bundleIdentifier: bundleIdentifier, bundleVersion: bundleVersion, lastUsedAt: lastUsedAt)
 }
