@@ -5,7 +5,7 @@ The audit compares Spotlight commit `6a02d9e` with Sol commit `45fe2c3` and rele
 ## Inputs
 
 - The local Spotlight repository and its installed signed `Launcher.app`.
-- `https://github.com/ospfranco/sol`, cloned beside Spotlight as `/Users/alejo/best/work/tools/sol`.
+- `https://github.com/ospfranco/sol`, cloned inside the launcher as `sol/` and left unmodified.
 - Sol's source, commit history, latest GitHub release metadata and launcher-related issues.
 
 ## Checks
@@ -35,6 +35,13 @@ gh issue view 290 --repo ospfranco/sol
 gh issue view 294 --repo ospfranco/sol
 gh issue view 300 --repo ospfranco/sol
 gh issue view 312 --repo ospfranco/sol
+```
+
+The reference clone is intentionally ignored rather than vendored or added as a submodule. Recreate it from the launcher root with:
+
+```sh
+git clone https://github.com/ospfranco/sol sol
+git -C sol checkout 45fe2c3d673f92c276b250f1dc9e6af552a4a67f
 ```
 
 Download release `2.1.352` to a temporary directory, expand it with `ditto -x -k`, then inspect it with `du` and `codesign -dv --verbose=2`. Do not launch it: normal startup registers global hotkeys and starts unrelated clipboard and update services.

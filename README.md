@@ -12,4 +12,6 @@ Use Command-1 through Command-6 to open a visible result. Select an application 
 
 [How Spotlight is built and tested](docs/development-and-testing.md) links to the development workflow, macOS interfaces, test methods and permission boundaries.
 
+`sol/` is an ignored, unmodified [Sol](https://github.com/ospfranco/sol) clone used to inspect its native panel, application watcher and hotkey behavior. We port only patterns that improve this launcher's existing features; the [reliability audit](docs/launcher-reliability-audit.md) records what to reuse and reject.
+
 The build uses the stable local signing identity shared with my other Mac utility. The stable signature keeps macOS's identity for the app across rebuilds; the build fails instead of falling back to ad-hoc signing.
