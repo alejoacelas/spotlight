@@ -10,7 +10,11 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
     ) ?? .commandSpace
     private var registeredShortcut: LauncherShortcut?
     private var mainShortcutError: String?
+    private var catalogApplications: [ApplicationRecord] = []
     private var applications: [ApplicationRecord] = []
+    private var catalogWatcher: ApplicationCatalogWatcher?
+    private var catalogError: String?
+    private var catalogReloadGeneration = 0
     private var appHotKeys: [String: GlobalHotKey] = [:]
     private var appShortcutApplications: [String: URL] = [:]
     private var appShortcuts: [String: AppShortcut] = [:]
@@ -38,6 +42,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         registerLoginItem()
         observeApplicationUse()
         observeShortcutLifecycle()
+        startCatalogWatcher()
         if shortcutLoad.resetCorruptValue {
             presentError("Saved application shortcuts were invalid and have been reset.")
         }
@@ -62,13 +67,24 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func reloadApplications(showWhenReady: Bool = false, demoQuery: String? = nil) {
+        catalogReloadGeneration += 1
+        let generation = catalogReloadGeneration
         DispatchQueue.global(qos: .userInitiated).async {
-            let applications = ApplicationCatalog.load()
+            let result = ApplicationCatalog.load()
             DispatchQueue.main.async {
-                self.applications = ApplicationExclusions.applying(self.excludedApplicationKeys, to: applications)
+                guard generation == self.catalogReloadGeneration else { return }
+                self.catalogApplications = ApplicationCatalog.preservingLastGoodCatalog(
+                    self.catalogApplications,
+                    after: result
+                )
+                self.catalogError = result.failures.first.map {
+                    "Application refresh incomplete — keeping previous results: \($0)"
+                }
+                self.applications = ApplicationExclusions.applying(self.excludedApplicationKeys, to: self.catalogApplications)
                     .map { ApplicationAliases.applying(self.aliases, to: $0) }
                 self.windowController.setApplications(self.applications)
                 self.registerAppShortcuts(reportFailures: true)
+                self.configureStatusMenu()
                 if showWhenReady {
                     self.showSpotlight()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
@@ -107,8 +123,19 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
                 queue: .main
             ) { [weak self] _ in
                 self?.retryUnavailableShortcuts()
+                self?.catalogWatcher?.restart()
+                self?.reloadApplications()
             }
             lifecycleObservers.append(observer)
+        }
+    }
+
+    private func startCatalogWatcher() {
+        let watcher = ApplicationCatalogWatcher { [weak self] in self?.reloadApplications() }
+        catalogWatcher = watcher
+        if !watcher.start() {
+            catalogError = "Application monitoring could not start; use Refresh Applications after installing or removing apps."
+            configureStatusMenu()
         }
     }
 
@@ -300,6 +327,10 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
                 keyEquivalent: ""
             )
             label.isEnabled = false
+        }
+        if let catalogError {
+            let error = menu.addItem(withTitle: catalogError, action: nil, keyEquivalent: "")
+            error.isEnabled = false
         }
         menu.addItem(.separator())
         let refresh = menu.addItem(withTitle: "Refresh Applications", action: #selector(refreshFromMenu), keyEquivalent: "")
