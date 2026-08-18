@@ -2,6 +2,12 @@
 
 Keep the native Swift launcher. Port four macOS lifecycle patterns from Sol; do not strip or fork Sol.
 
+## Implementation status
+
+Implemented on `agent/improve-launcher-search` on August 18, 2026: stable Launcher identity, non-activating panel focus, transactional observable hotkeys, watched failure-preserving catalog, tiered recency ranking, cancellable auto-launch, private aggregate counters and the consolidated native test gate. The 27-test suite and warnings-as-errors release build pass. Computer Use verified the signed isolated UI's named focused search field, six rows, arrow selection, Command-K sheet and Command-1 launch. The signed keyboard driver is checked in; macOS still requires its one-time Accessibility grant before the automated local run. Launcher itself needs no grant.
+
+The one-week accidental-launch dogfood threshold remains an observation period, not an implementation task. Launcher records the selection counts and latency aggregates needed to evaluate it without storing queries.
+
 This recommendation preserves Spotlight's current scope: find and open applications, rank likely matches, auto-open a decisive match, rename or remove results, assign shortcuts, and start at login. It adds no result types or commands.
 
 ## Why not use Sol as the base?

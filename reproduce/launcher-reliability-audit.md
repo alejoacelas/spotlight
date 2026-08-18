@@ -1,6 +1,6 @@
-# Reproduce the launcher audit
+# Reproduce the launcher reliability work
 
-The audit compares Spotlight commit `6a02d9e` with Sol commit `45fe2c3` and release `2.1.352`.
+The audit compared Launcher commit `6a02d9e` with Sol commit `45fe2c3` and release `2.1.352`. Implementation kept the native app and ported only the panel, catalog and lifecycle patterns described in the audit.
 
 ## Inputs
 
@@ -23,6 +23,15 @@ plutil -p "$HOME/Applications/Launcher.app/Contents/Info.plist"
 defaults read com.alejoacelas.launcher
 sfltool dumpbtm | rg -C 3 'com\.alejoacelas\.(launcher|spotlight)'
 ```
+
+The maintained release gate replaces the individual build commands:
+
+```sh
+./scripts/check.sh       # tests, release, signing, signed UI smoke test, install
+./scripts/check.sh --ci  # same non-UI checks, without permission or installation
+```
+
+The UI driver launches an isolated six-row catalog, asserts the named window state and prior frontmost application, and exercises Command-Space, text, arrows, Return, Escape, Command-1 through Command-6 and Command-K. Only the signed driver needs Accessibility permission; Launcher does not.
 
 From `sol/`:
 
@@ -48,11 +57,11 @@ Download release `2.1.352` to a temporary directory, expand it with `ditto -x -k
 
 ## Source paths inspected
 
-Spotlight:
+Launcher:
 
 - `ApplicationCatalog.swift`
-- `SpotlightModel.swift`
-- `SpotlightWindowController.swift`
+- `LauncherModel.swift`
+- `LauncherWindowController.swift`
 - `GlobalHotKey.swift`
 - `AppShortcut.swift`
 - `main.swift`

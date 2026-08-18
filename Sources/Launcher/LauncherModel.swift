@@ -89,7 +89,7 @@ struct ApplicationMatch: Equatable, Sendable {
     var score: Int { 10_000 - tier.rawValue * 1_000 }
 }
 
-enum SpotlightModel {
+enum LauncherModel {
     static let resultLimit = 6
 
     static func matches(

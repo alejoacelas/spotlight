@@ -1,8 +1,8 @@
 @preconcurrency import AppKit
 @preconcurrency import ServiceManagement
 
-final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
-    private let windowController = SpotlightWindowController()
+final class LauncherAppDelegate: NSObject, NSApplicationDelegate {
+    private let windowController = LauncherWindowController()
     private var hotKey: GlobalHotKey?
     private var statusItem: NSStatusItem!
     private var desiredShortcut = LauncherShortcut(
@@ -22,6 +22,10 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
     private var appShortcuts: [String: AppShortcut] = [:]
     private var unavailableAppShortcutKeys = Set<String>()
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var integrationOutputPath: String? {
+        CommandLine.arguments.first { $0.hasPrefix("--integration-test-output=") }?
+            .dropFirst("--integration-test-output=".count).description
+    }
     private var aliases: [String: String] {
         get { UserDefaults.standard.dictionary(forKey: "applicationAliases") as? [String: String] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: "applicationAliases") }
@@ -35,15 +39,32 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.accessory)
         let shortcutLoad = LauncherPreferences.loadAppShortcuts()
         appShortcuts = shortcutLoad.shortcuts
-        windowController.onLaunch = { [weak self] application in self?.open(application) }
+        windowController.onLaunch = { [weak self] application in
+            if let path = self?.integrationOutputPath {
+                self?.recordIntegrationLaunch(application, at: path)
+            } else {
+                self?.open(application)
+            }
+        }
         windowController.onRename = { [weak self] application, name in self?.rename(application, to: name) }
         windowController.onSetShortcut = { [weak self] application, shortcut in self?.setShortcut(shortcut, for: application) }
-        windowController.onRemove = { [weak self] application in self?.removeFromSpotlight(application) }
+        windowController.onRemove = { [weak self] application in self?.removeFromLauncher(application) }
         windowController.onSearchDuration = { [weak self] duration in
             self?.metrics.recordSearch(seconds: duration)
         }
         configureStatusItem()
         installMainHotKey(reportFailure: true)
+        if integrationOutputPath != nil {
+            windowController.setApplications((1...6).map {
+                ApplicationRecord(
+                    name: "Test App \($0)",
+                    url: URL(fileURLWithPath: "/Applications/Test App \($0).app"),
+                    bundleIdentifier: "com.alejoacelas.launcher.test-app-\($0)"
+                )
+            })
+            if CommandLine.arguments.contains("--demo") { showLauncher() }
+            return
+        }
         registerLoginItem()
         observeApplicationUse()
         observeShortcutLifecycle()
@@ -67,7 +88,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func showSpotlight() {
+    private func showLauncher() {
         windowController.show()
     }
 
@@ -97,7 +118,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
                 self.registerAppShortcuts(reportFailures: true)
                 self.configureStatusMenu()
                 if showWhenReady {
-                    self.showSpotlight()
+                    self.showLauncher()
                     if let demoQuery { self.windowController.setDemoQuery(demoQuery) }
                 }
             }
@@ -111,6 +132,22 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         configuration.activates = true
         NSWorkspace.shared.openApplication(at: application.url, configuration: configuration) { _, error in
             if let error { self.presentError("Could not open \(application.name): \(error.localizedDescription)") }
+        }
+    }
+
+    private func recordIntegrationLaunch(_ application: ApplicationRecord, at path: String) {
+        let line = "\(application.name)\n"
+        let url = URL(fileURLWithPath: path)
+        if !FileManager.default.fileExists(atPath: path) {
+            FileManager.default.createFile(atPath: path, contents: nil)
+        }
+        guard let handle = try? FileHandle(forWritingTo: url) else { return }
+        defer { try? handle.close() }
+        do {
+            try handle.seekToEnd()
+            try handle.write(contentsOf: Data(line.utf8))
+        } catch {
+            presentError("Integration test log failed: \(error.localizedDescription)")
         }
     }
 
@@ -186,7 +223,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         windowController.setApplications(applications)
     }
 
-    private func removeFromSpotlight(_ application: ApplicationRecord) {
+    private func removeFromLauncher(_ application: ApplicationRecord) {
         let key = ApplicationAliases.key(for: application)
         var excluded = excludedApplicationKeys
         excluded.insert(key)
@@ -364,7 +401,7 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    @objc private func openFromMenu() { showSpotlight() }
+    @objc private func openFromMenu() { showLauncher() }
     @objc private func refreshFromMenu() { reloadApplications() }
     @objc private func restoreRemovedApplications() {
         excludedApplicationKeys = []
@@ -392,6 +429,6 @@ final class SpotlightAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 let application = NSApplication.shared
-let delegate = SpotlightAppDelegate()
+let delegate = LauncherAppDelegate()
 application.delegate = delegate
 application.run()

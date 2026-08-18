@@ -1,6 +1,6 @@
 import AppKit
 
-final class SpotlightPanel: NSPanel, NSWindowDelegate {
+final class LauncherPanel: NSPanel, NSWindowDelegate {
     var renameAction: (() -> Void)?
     var actionsAction: (() -> Void)?
     var openIndexAction: ((Int) -> Void)?
@@ -27,7 +27,7 @@ final class ApplicationCellView: NSTableCellView {
     let commandLabel = NSTextField(labelWithString: "")
 }
 
-final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class LauncherWindowController: NSWindowController, NSSearchFieldDelegate, NSTableViewDataSource, NSTableViewDelegate {
     private let searchField = NSSearchField()
     private let tableView = NSTableView()
     private let scrollView = NSScrollView()
@@ -45,12 +45,13 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     var onSearchDuration: ((TimeInterval) -> Void)?
 
     init() {
-        let panel = SpotlightPanel(
+        let panel = LauncherPanel(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 274),
             styleMask: [.borderless, .fullSizeContentView, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
+        panel.setAccessibilityIdentifier("launcher.window")
         super.init(window: panel)
         panel.renameAction = { [weak self] in self?.promptToRenameSelected() }
         panel.actionsAction = { [weak self] in self?.promptForActionsSelected() }
@@ -122,7 +123,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
             return
         }
         guard launchedForQuery != query,
-              let match = SpotlightModel.uniqueMatch(query: query, matches: matches) else { return }
+              let match = LauncherModel.uniqueMatch(query: query, matches: matches) else { return }
         let workItem = DispatchWorkItem { [weak self] in
             guard let self,
                   self.searchField.stringValue == query,
@@ -216,6 +217,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         searchField.controlSize = .large
         searchField.focusRingType = .none
         searchField.placeholderString = "Open an application — ⌘K actions"
+        searchField.setAccessibilityIdentifier("launcher.search")
         searchField.delegate = self
         searchField.sendsSearchStringImmediately = true
 
@@ -231,6 +233,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         tableView.delegate = self
         tableView.target = self
         tableView.doubleAction = #selector(doubleClicked)
+        tableView.setAccessibilityIdentifier("launcher.results")
 
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.documentView = tableView
@@ -295,7 +298,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
 
     private func updateResults() {
         let started = ProcessInfo.processInfo.systemUptime
-        matches = SpotlightModel.matches(query: searchField.stringValue, applications: applications)
+        matches = LauncherModel.matches(query: searchField.stringValue, applications: applications)
         onSearchDuration?(ProcessInfo.processInfo.systemUptime - started)
         resizeWindow(for: matches.count)
         tableView.reloadData()

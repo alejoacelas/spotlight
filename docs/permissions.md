@@ -1,8 +1,8 @@
 # Permissions and Restrictions
 
-## Permissions Spotlight needs
+## Permissions Launcher needs
 
-Spotlight does not need Accessibility, Screen Recording, microphone, camera or Full Disk Access. Its global shortcut uses Carbon, its own window receives ordinary text input, and it reads application bundles and public Spotlight metadata.
+Launcher does not need Accessibility, Screen Recording, microphone, camera or Full Disk Access. Its global shortcut uses Carbon, its own window receives ordinary text input, and it reads application bundles and public Spotlight metadata.
 
 The login item is registered through Apple's Service Management API. macOS notifies the user and lets them disable it in System Settings, but does not ask for an administrator password.
 
@@ -28,4 +28,4 @@ When direct graphical computer control is involved, I must pause immediately bef
 
 Some steps must be handed to the user entirely, including entering a new password and bypassing browser security warnings.
 
-For this work, none of those prompts were necessary. The requested installation and login registration were in scope, the signing identity already existed, and Spotlight deliberately avoided APIs that would trigger an Accessibility prompt. If the signing identity were missing or macOS required a new privacy grant, I would stop at that point and ask the user to create or approve it.
+The signed integration driver injects keys and reads named UI state, so it has a separate one-time Accessibility grant. macOS requires Touch ID or the account password to add it. Launcher deliberately avoids that API and grant.
