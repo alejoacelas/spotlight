@@ -35,6 +35,7 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
     private var applications: [ApplicationRecord] = []
     private var matches: [ApplicationMatch] = []
     private var shortcuts: [String: AppShortcut] = [:]
+    private var unavailableShortcutKeys = Set<String>()
     private var launchedForQuery: String?
     var onLaunch: ((ApplicationRecord) -> Void)?
     var onRename: ((ApplicationRecord, String) -> Void)?
@@ -68,8 +69,9 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         updateResults()
     }
 
-    func setShortcuts(_ shortcuts: [String: AppShortcut]) {
+    func setShortcuts(_ shortcuts: [String: AppShortcut], unavailable: Set<String> = []) {
         self.shortcuts = shortcuts
+        unavailableShortcutKeys = unavailable
         tableView.reloadData()
     }
 
@@ -141,7 +143,8 @@ final class SpotlightWindowController: NSWindowController, NSSearchFieldDelegate
         cell.imageView?.imageScaling = .scaleProportionallyUpOrDown
         let rowCommand = "⌘\(row + 1)"
         if let shortcut = shortcuts[ApplicationAliases.key(for: match.application)] {
-            cell.commandLabel.stringValue = "\(shortcut.displayName)   \(rowCommand)"
+            let warning = unavailableShortcutKeys.contains(ApplicationAliases.key(for: match.application)) ? "⚠︎ " : ""
+            cell.commandLabel.stringValue = "\(warning)\(shortcut.displayName)   \(rowCommand)"
         } else {
             cell.commandLabel.stringValue = rowCommand
         }

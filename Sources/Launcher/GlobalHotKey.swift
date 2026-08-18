@@ -1,6 +1,6 @@
 import Carbon
 
-enum SpotlightShortcut: String, CaseIterable {
+enum LauncherShortcut: String, CaseIterable {
     case commandSpace
     case optionSpace
 
@@ -19,33 +19,61 @@ enum SpotlightShortcut: String, CaseIterable {
     }
 }
 
+enum GlobalHotKeyError: LocalizedError {
+    case eventHandlerInstallationFailed(OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case let .eventHandlerInstallationFailed(status):
+            return "The global shortcut listener could not start (Carbon error \(status))."
+        }
+    }
+}
+
 final class GlobalHotKey {
     private static var nextIdentifier: UInt32 = 1
     private static let signature = "Lnch".utf8.reduce(0) { ($0 << 8) + OSType($1) }
 
     private var eventHotKey: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
+    private var registeredIdentifier: EventHotKeyID?
     private let action: () -> Void
-    private let identifier: EventHotKeyID
+    private(set) var registeredKeyCode: UInt32?
+    private(set) var registeredCarbonModifiers: UInt32?
 
-    init(action: @escaping () -> Void) {
+    init(action: @escaping () -> Void) throws {
         self.action = action
-        identifier = EventHotKeyID(signature: Self.signature, id: Self.nextIdentifier)
-        Self.nextIdentifier += 1
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
         let pointer = Unmanaged.passUnretained(self).toOpaque()
-        InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
-            guard let context else { return noErr }
+        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, context in
+            guard let context else { return OSStatus(eventNotHandledErr) }
             let owner = Unmanaged<GlobalHotKey>.fromOpaque(context).takeUnretainedValue()
             var received = EventHotKeyID()
             var size = MemoryLayout<EventHotKeyID>.size
-            let status = GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID), nil, size, &size, &received)
-            guard status == noErr, received.signature == owner.identifier.signature, received.id == owner.identifier.id else {
+            let status = GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                size,
+                &size,
+                &received
+            )
+            guard status == noErr,
+                  let registered = owner.registeredIdentifier,
+                  received.signature == registered.signature,
+                  received.id == registered.id else {
                 return OSStatus(eventNotHandledErr)
             }
             owner.action()
             return noErr
         }, 1, &eventType, pointer, &eventHandler)
+        guard status == noErr else {
+            throw GlobalHotKeyError.eventHandlerInstallationFailed(status)
+        }
     }
 
     deinit {
@@ -54,19 +82,50 @@ final class GlobalHotKey {
     }
 
     @discardableResult
-    func register(_ shortcut: SpotlightShortcut) -> Bool {
+    func register(_ shortcut: LauncherShortcut) -> Bool {
         register(keyCode: UInt32(kVK_Space), carbonModifiers: shortcut.carbonModifiers)
     }
 
     @discardableResult
     func register(keyCode: UInt32, carbonModifiers: UInt32) -> Bool {
-        unregister()
-        let status = RegisterEventHotKey(keyCode, carbonModifiers, identifier, GetApplicationEventTarget(), 0, &eventHotKey)
-        return status == noErr
+        if registeredKeyCode == keyCode, registeredCarbonModifiers == carbonModifiers {
+            return true
+        }
+
+        let candidateIdentifier = Self.makeIdentifier()
+        var candidate: EventHotKeyRef?
+        let status = RegisterEventHotKey(
+            keyCode,
+            carbonModifiers,
+            candidateIdentifier,
+            GetApplicationEventTarget(),
+            0,
+            &candidate
+        )
+        guard status == noErr, let candidate else {
+            if let candidate { UnregisterEventHotKey(candidate) }
+            return false
+        }
+
+        let previous = eventHotKey
+        eventHotKey = candidate
+        registeredIdentifier = candidateIdentifier
+        registeredKeyCode = keyCode
+        registeredCarbonModifiers = carbonModifiers
+        if let previous { UnregisterEventHotKey(previous) }
+        return true
     }
 
     func unregister() {
         if let eventHotKey { UnregisterEventHotKey(eventHotKey) }
         eventHotKey = nil
+        registeredIdentifier = nil
+        registeredKeyCode = nil
+        registeredCarbonModifiers = nil
+    }
+
+    private static func makeIdentifier() -> EventHotKeyID {
+        defer { nextIdentifier &+= 1 }
+        return EventHotKeyID(signature: signature, id: nextIdentifier)
     }
 }

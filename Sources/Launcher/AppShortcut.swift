@@ -21,6 +21,21 @@ struct AppShortcut: Codable, Equatable, Sendable {
         self.key = key
     }
 
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let keyCode = try container.decode(UInt32.self, forKey: .keyCode)
+        let carbonModifiers = try container.decode(UInt32.self, forKey: .carbonModifiers)
+        let key = try container.decode(String.self, forKey: .key)
+        guard Self.isValid(keyCode: keyCode, carbonModifiers: carbonModifiers, key: key) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .keyCode,
+                in: container,
+                debugDescription: "Invalid persisted application shortcut"
+            )
+        }
+        self.init(keyCode: keyCode, carbonModifiers: carbonModifiers, key: key)
+    }
+
     init?(event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         var modifiers: UInt32 = 0
@@ -30,10 +45,19 @@ struct AppShortcut: Codable, Equatable, Sendable {
         if flags.contains(.command) { modifiers |= UInt32(cmdKey) }
         guard modifiers & (UInt32(controlKey) | UInt32(optionKey) | UInt32(cmdKey)) != 0,
               let characters = event.charactersIgnoringModifiers?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let character = characters.first else { return nil }
-        keyCode = UInt32(event.keyCode)
-        carbonModifiers = modifiers
-        key = String(character)
+              let character = characters.first,
+              Self.isValid(keyCode: UInt32(event.keyCode), carbonModifiers: modifiers, key: String(character)) else { return nil }
+        self.init(keyCode: UInt32(event.keyCode), carbonModifiers: modifiers, key: String(character))
+    }
+
+    static func isValid(keyCode: UInt32, carbonModifiers: UInt32, key: String) -> Bool {
+        let allowed = UInt32(controlKey | optionKey | shiftKey | cmdKey)
+        let required = UInt32(controlKey | optionKey | cmdKey)
+        return keyCode <= 127
+            && carbonModifiers & ~allowed == 0
+            && carbonModifiers & required != 0
+            && key.count == 1
+            && key.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
     }
 }
 
