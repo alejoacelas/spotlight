@@ -115,3 +115,12 @@ Sol:
 #### Decision method
 
 Compare only the existing application-launcher behavior. Count a Sol pattern as reusable when it closes a current failure without bringing its runtime or another feature. Rank work by silent-failure risk first, then interaction latency, then maintenance cost.
+
+## Retire construction folders
+
+Alejo wanted all `reproduce` folders under `~/best` transitioned to `REPLICATE.md`.
+
+- Consolidated the existing records and updated references for `reproduce`. Preserved scripts, data and maintained procedures in their own folders.
+- Original tracked files remain in Git at `8f2b4a09524f59bb874eb69422cec50a90d1da80`; a full local backup, including ignored files, is at `/Users/alejo/.local/state/reproduce-migration/2026-09-19-_qyg4u7a/before/tools/stable/spotlight`.
+
+Agent session 01a0bb8d-6d31-76d3-ac4e-aca4c5dfce64 · Commits 9431f5ef00c93374a9c94d4cf2da46a0d2d1ba0c
