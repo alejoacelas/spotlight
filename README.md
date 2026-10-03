@@ -2,6 +2,12 @@
 
 My small, typo-tolerant macOS app finder. Results rerank by match quality and recent use with every character, match inside names as well as at their start, and a decisive match opens after a 90 ms typing pause.
 
+The primary version now runs inside Raycast: **Option–Space → Launch Applications**. It imports the native launcher's names, hidden apps and recency once, then saves its own settings. See [Raycast setup and controls](raycast/README.md).
+
+The native app remains available as a fallback. Its login item is disabled on this Mac so both launchers do not compete for Option–Space.
+
+## Native app
+
 ```sh
 ./scripts/build-app.sh --install
 ```
