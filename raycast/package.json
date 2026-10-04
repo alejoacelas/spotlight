@@ -1,0 +1,56 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "alejo-launcher",
+  "title": "Launcher",
+  "description": "Typo-tolerant application launcher with decisive-match auto-open",
+  "icon": "icon.png",
+  "author": "alejoacelas",
+  "license": "MIT",
+  "platforms": [
+    "macOS"
+  ],
+  "categories": [
+    "Productivity"
+  ],
+  "commands": [
+    {
+      "name": "launcher",
+      "title": "Launch Applications",
+      "description": "Find apps with custom ranking and automatic opening",
+      "mode": "view"
+    },
+    {
+      "name": "manage",
+      "title": "Manage Launcher Applications",
+      "description": "Rename, hide and restore apps without automatic opening",
+      "mode": "view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "autoLaunch",
+      "type": "checkbox",
+      "title": "Automatic Opening",
+      "label": "Open decisive matches after a 90 ms typing pause",
+      "default": true,
+      "required": false
+    }
+  ],
+  "scripts": {
+    "native": "bash scripts/build-native.sh",
+    "build": "npm run native && ray build",
+    "dev": "npm run native && ray develop",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@raycast/api": "latest",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "typescript": "^5.9.0",
+    "tsx": "^4.20.0"
+  }
+}
